@@ -14,16 +14,21 @@ faces = FaceProcessor()
 # Game & Robot
 game = GameEngine("assets/harta.png", "assets/move.gif")
 
-# Camera — choose depending on your setup:
-# FOR USB WEBCAM:
-cap = cv2.VideoCapture(0, cv2.CAP_V4L2)
+# -------------------------------------------------------------
+# Camera – Raspberry Pi via GStreamer (libcamera)
+gst_pipeline = (
+    "libcamerasrc ! "
+    "video/x-raw, width=640, height=480, framerate=30/1 ! "
+    "videoconvert ! "
+    "video/x-raw, format=BGR ! "
+    "appsink drop=1"
+)
 
-# FOR RASPBERRY PI CAMERA MODULE:
-# cap = cv2.VideoCapture(0)
+cap = cv2.VideoCapture(gst_pipeline, cv2.CAP_GSTREAMER)
+# -------------------------------------------------------------
 
-cap.set(cv2.CAP_PROP_FRAME_WIDTH, 320)
-cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 240)
-cap.set(cv2.CAP_PROP_FPS, 30)
+# (opțional) dacă vrei totuși să reduci la 320x240 pentru viteză
+TARGET_W, TARGET_H = 320, 240
 
 running = True
 while running:
@@ -34,7 +39,7 @@ while running:
         break
 
     # Resize for speed (IMPORTANT for Pi)
-    frame = cv2.resize(frame, (320, 240))
+    frame = cv2.resize(frame, (TARGET_W, TARGET_H))
 
     # Face processing
     detection, mesh = faces.process(frame)
@@ -51,7 +56,7 @@ while running:
     # Small preview
     preview = frame.copy()
     cv2.putText(preview, f"GESTURE: {gesture}", (10, 30),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0,255,0), 2)
+                cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
     cv2.imshow("Camera Control", preview)
 
     # Handle pygame quit
