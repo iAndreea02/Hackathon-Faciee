@@ -1,39 +1,32 @@
 import cv2
-import mediapipe as mp
+from cvzone.HandTrackingModule import HandDetector as CVHandDetector
 import math
 
 class HandDetector:
     def __init__(self, max_hands=2):
-        self.mp_hands = mp.solutions.hands
-        self.hands = self.mp_hands.Hands(
-            max_num_hands=max_hands,
-            min_detection_confidence=0.6,
-            min_tracking_confidence=0.6
-        )
-        self.drawer = mp.solutions.drawing_utils
+        # CVZone HandDetector
+        self.detector = CVHandDetector(maxHands=max_hands, detectionCon=0.6, trackCon=0.6)
+        self.hands_data = []
 
     # ----------------------------------------------------------
     def detect(self, frame):
-        rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        results = self.hands.process(rgb)
-        return results
+        """Detectează mâini folosind CVZone"""
+        frame, self.hands_data = self.detector.findHands(frame)
+        return self.hands_data
 
     # ----------------------------------------------------------
-    def get_biggest_hand(self, results):
+    def get_biggest_hand(self, hands_data):
         """Returnează DOAR mâna cea mai apropiată de cameră (cea mai mare)"""
-        if not results.multi_hand_landmarks:
+        if not hands_data:
             return None
 
         max_size = 0
         biggest_hand = None
 
-        for idx, hand in enumerate(results.multi_hand_landmarks):
-            # calculăm bounding box normalizat
-            xs = [lm.x for lm in hand.landmark]
-            ys = [lm.y for lm in hand.landmark]
-
-            width = max(xs) - min(xs)
-            height = max(ys) - min(ys)
+        for hand in hands_data:
+            # hand este dict cu keys: 'lmList' (lista de landmarks), 'bbox' (bounding box)
+            bbox = hand["bbox"]
+            width, height = bbox[2] - bbox[0], bbox[3] - bbox[1]
             area = width * height
 
             if area > max_size:
@@ -46,11 +39,10 @@ class HandDetector:
     def draw_hands(self, frame, hand):
         """Desenează DOAR mâna selectată"""
         if hand:
-            self.drawer.draw_landmarks(
-                frame,
-                hand,
-                self.mp_hands.HAND_CONNECTIONS
-            )
+            lmList = hand["lmList"]
+            # Desenează puncte și conexiuni
+            for i, lm in enumerate(lmList):
+                cv2.circle(frame, (int(lm[0]), int(lm[1])), 5, (0, 255, 0), -1)
         return frame
 
     # ----------------------------------------------------------
@@ -59,15 +51,15 @@ class HandDetector:
         if hand is None:
             return "NONE"
 
-        lm = hand.landmark
+        lmList = hand["lmList"]  # Lista de coordonate [x, y, z]
 
         # FUNCȚIE UTILĂ – verifică dacă degetul este ridicat
         def finger_up(tip, pip):
-            return lm[tip].y < lm[pip].y - 0.02  # mică rezervă pentru stabilitate
+            return lmList[tip][1] < lmList[pip][1] - 10  # diferență în pixeli
 
-        # Deget mare
-        thumb_up = lm[4].y < lm[3].y - 0.01
-        thumb_down = lm[4].y > lm[3].y + 0.01
+        # Deget mare (indici 3, 4)
+        thumb_up = lmList[4][1] < lmList[3][1] - 5
+        thumb_down = lmList[4][1] > lmList[3][1] + 5
 
         # Degetele normale
         index_up  = finger_up(8, 6)

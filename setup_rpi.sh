@@ -32,13 +32,15 @@ sudo apt-get install -y \
 sudo apt-get install -y \
     python3-pygame
 
-# MediaPipe dependencies (for hand/face detection)
+# CVZone dependencies (lighter alternative to MediaPipe for hand/face detection)
 sudo apt-get install -y \
     libatlas-base-dev \
-    libopenblas0 \
-    libopenmpi-dev \
-    libblas3 \
-    libc6
+    libjasper-dev \
+    libtiff5 \
+    libharfbuzz0b \
+    libwebp6 \
+    libopenjp2-7 \
+    libfreetype6-dev
 
 # GStreamer for camera (libcamera)
 sudo apt-get install -y \

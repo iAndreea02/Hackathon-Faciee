@@ -42,12 +42,13 @@ while running:
     frame = cv2.resize(frame, (TARGET_W, TARGET_H))
 
     # Face processing
-    detection, mesh = faces.process(frame)
+    face_bbox, frame_with_detections = faces.process(frame)
+    head_turn = faces.get_head_turn(frame, face_bbox)
 
     # Hand processing
-    results = hands.detect(frame)
-    hand = hands.get_biggest_hand(results)
-    gesture = hands.classify_gesture(hand)
+    hand_data = hands.detect(frame)
+    biggest_hand = hands.get_biggest_hand(hand_data)
+    gesture = hands.classify_gesture(biggest_hand)
 
     # Update game → MOVE ROBOT WITH GESTURE
     game.update(gesture)
