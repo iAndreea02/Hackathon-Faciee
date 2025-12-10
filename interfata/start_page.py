@@ -1,121 +1,107 @@
-from PyQt5.QtWidgets import QApplication, QWidget, QLabel, QPushButton, QVBoxLayout, QGraphicsOpacityEffect, QGraphicsDropShadowEffect
-from PyQt5.QtCore import Qt, QPropertyAnimation, QRect, QEasingCurve, QSequentialAnimationGroup, QPoint
-from PyQt5.QtGui import QPainter, QLinearGradient, QColor, QPixmap
-import sys
+from kivy.app import App
+from kivy.uix.widget import Widget
+from kivy.uix.image import Image
+from kivy.uix.button import Button
+from kivy.uix.label import Label
+from kivy.uix.boxlayout import BoxLayout
+from kivy.graphics import Color, Rectangle, LinearGradient
+from kivy.animation import Animation
+from kivy.core.window import Window
 
-class StartPage(QWidget):
-    def __init__(self):
-        super().__init__()
+# Dimensiuni tip tabletă verticală
+Window.size = (480, 800)
 
-        # Colors
-        self.bgStart = QColor("#0A0E1A")
-        self.bgEnd = QColor("#001F30")
+class GradientBackground(Widget):
+    """Widget care desenează fundalul în gradient."""
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        with self.canvas:
+            self.grad = LinearGradient(
+                (0, 0), (0, Window.height),
+                (10/255, 14/255, 26/255, 1),   # #0A0E1A
+                (0/255, 31/255, 48/255, 1)     # #001F30
+            )
+            self.rect = Rectangle(size=Window.size, pos=self.pos)
 
-        self.setMinimumSize(480, 800)
-        self._build_ui()
-        self._animate()
+        self.bind(size=self._update, pos=self._update)
 
-    def _build_ui(self):
-        # ROBOT
-        self.robot = QLabel(self)
-        self.robot.setPixmap(QPixmap("robo.png").scaled(250, 250, Qt.KeepAspectRatio, Qt.SmoothTransformation))
-        self.robot.setAlignment(Qt.AlignCenter)
-        self.robot.setFixedSize(250, 250)
-        self.robot.move((480 - 250) // 2, 300)
+    def _update(self, *args):
+        self.rect.pos = self.pos
+        self.rect.size = self.size
 
-        self.glow = QGraphicsDropShadowEffect()
-        self.glow.setBlurRadius(40)
-        self.glow.setColor(QColor("#E21ADB"))
-        self.glow.setOffset(0, 0)
-        self.robot.setGraphicsEffect(self.glow)
 
-        self.layout = QVBoxLayout(self)
-        self.layout.setAlignment(Qt.AlignCenter)
+class StartPage(BoxLayout):
+    def __init__(self, **kwargs):
+        super().__init__(orientation="vertical", padding=20, spacing=10, **kwargs)
 
-        self.layout.addStretch()
+        # Fundal gradient
+        self.bg = GradientBackground()
+        self.add_widget(self.bg)
+
+        # Layout de conținut peste fundal
+        self.content = BoxLayout(orientation="vertical", spacing=10)
+        self.add_widget(self.content)
 
         # TITLU
-        self.title = QLabel("Hello, viitor student!")
-        self.title.setStyleSheet("font-size:38px; font-weight:bold; color:#E21ADB;")
-        self.title.setAlignment(Qt.AlignCenter)
-        self.layout.addWidget(self.title)
+        title = Label(
+            text="Hello, viitor student!",
+            font_size=38,
+            bold=True,
+            color=(226/255, 26/255, 219/255, 1),  # #E21ADB
+            size_hint=(1, None),
+            height=60
+        )
+        self.content.add_widget(title)
 
         # SUBTITLU
-        self.subtitle = QLabel("Facultatea ACIEE te așteaptă!")
-        self.subtitle.setStyleSheet("font-size:16px; color:#00E0FF;")
-        self.subtitle.setAlignment(Qt.AlignCenter)
-        self.layout.addWidget(self.subtitle)
+        subtitle = Label(
+            text="Facultatea ACIEE te așteaptă!",
+            font_size=18,
+            color=(0, 224/255, 255/255, 1),  # #00E0FF
+            size_hint=(1, None),
+            height=40
+        )
+        self.content.add_widget(subtitle)
 
-        self.layout.addSpacing(290)
+        # ROBOT IMAGE
+        self.robot = Image(
+            source="robo.png",
+            size_hint=(None, None),
+            size=(260, 260),
+            pos_hint={"center_x": 0.5}
+        )
+        self.content.add_widget(self.robot)
 
-        # BUTTON
-        self.button = QPushButton("Intră în aplicație")
-        self.button.setStyleSheet("""
-            QPushButton {
-                background:#E21ADB;
-                color:white;
-                font-size:22px;
-                font-weight:bold;
-                padding:15px;
-                border-radius:8px;
-            }
-            QPushButton:hover {
-                background:#f545e6;
-            }
-        """)
-        self.layout.addWidget(self.button)
+        # ANIMAȚIE FLOATING
+        self.start_floating()
 
-        self.layout.addStretch()
+        # BUTON START
+        start_btn = Button(
+            text="Intră în aplicație",
+            size_hint=(0.7, None),
+            height=60,
+            pos_hint={"center_x": 0.5},
+            background_normal="",
+            background_color=(226/255, 26/255, 219/255, 1),
+            color=(1, 1, 1, 1),
+            font_size=22,
+            bold=True
+        )
+        self.content.add_widget(start_btn)
 
-    def paintEvent(self, event):
-        painter = QPainter(self)
-        gradient = QLinearGradient(0, 0, self.width(), self.height())
-        gradient.setColorAt(0, self.bgStart)
-        gradient.setColorAt(1, self.bgEnd)
-        painter.fillRect(self.rect(), gradient)
+    def start_floating(self):
+        """Robotul se ridică și coboară continuu."""
+        anim_up = Animation(y=self.robot.y + 25, duration=2, t="in_out_quad")
+        anim_down = Animation(y=self.robot.y - 25, duration=2, t="in_out_quad")
+        anim = anim_up + anim_down
+        anim.repeat = True
+        anim.start(self.robot)
 
-    def _animate(self):
-        # Floating robot
-        start = self.robot.pos()
-        end = QPoint(start.x(), start.y() - 25)
 
-        self.up = QPropertyAnimation(self.robot, b"pos")
-        self.up.setDuration(4000)
-        self.up.setStartValue(start)
-        self.up.setEndValue(end)
-        self.up.setEasingCurve(QEasingCurve.InOutQuad)
+class MyApp(App):
+    def build(self):
+        return StartPage()
 
-        self.down = QPropertyAnimation(self.robot, b"pos")
-        self.down.setDuration(4000)
-        self.down.setStartValue(end)
-        self.down.setEndValue(start)
-        self.down.setEasingCurve(QEasingCurve.InOutQuad)
-
-        self.float = QSequentialAnimationGroup()
-        self.float.addAnimation(self.up)
-        self.float.addAnimation(self.down)
-        self.float.setLoopCount(-1)
-        self.float.start()
-
-        # Glow pulsation
-        self.glow_anim1 = QPropertyAnimation(self.glow, b"blurRadius")
-        self.glow_anim1.setDuration(1200)
-        self.glow_anim1.setStartValue(30)
-        self.glow_anim1.setEndValue(55)
-
-        self.glow_anim2 = QPropertyAnimation(self.glow, b"blurRadius")
-        self.glow_anim2.setDuration(1200)
-        self.glow_anim2.setStartValue(55)
-        self.glow_anim2.setEndValue(30)
-
-        self.glow_seq = QSequentialAnimationGroup()
-        self.glow_seq.addAnimation(self.glow_anim1)
-        self.glow_seq.addAnimation(self.glow_anim2)
-        self.glow_seq.setLoopCount(-1)
-        self.glow_seq.start()
 
 if __name__ == "__main__":
-    app = QApplication(sys.argv)
-    win = StartPage()
-    win.show()
-    sys.exit(app.exec_())
+    MyApp().run()
