@@ -16,10 +16,13 @@ game = GameEngine("harta.png", "move.gif")
 
 # -------------------------------------------------------------
 # Camera – Raspberry Pi via GStreamer (libcamera)
-cap = cv2.VideoCapture(0, cv2.CAP_V4L2)
-cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-cap.set(cv2.CAP_PROP_FPS, 30)
+gst_pipeline = (
+    "libcamerasrc auto-focus-mode=0 ! "
+    "video/x-raw, width=640, height=480, framerate=30/1 ! "
+    "videoconvert ! "
+    "video/x-raw, format=BGR ! appsink"
+)
+cap = cv2.VideoCapture(gst_pipeline, cv2.CAP_GSTREAMER)
 
 # -------------------------------------------------------------
 
