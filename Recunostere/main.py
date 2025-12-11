@@ -16,15 +16,11 @@ game = GameEngine("harta.png", "move.gif")
 
 # -------------------------------------------------------------
 # Camera – Raspberry Pi via GStreamer (libcamera)
-gst_pipeline = (
-    "libcamerasrc ! "
-    "video/x-raw, width=640, height=480, framerate=30/1 ! "
-    "videoconvert ! "
-    "video/x-raw, format=BGR ! "
-    "appsink drop=1"
-)
+cap = cv2.VideoCapture(0, cv2.CAP_V4L2)
+cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+cap.set(cv2.CAP_PROP_FPS, 30)
 
-cap = cv2.VideoCapture(gst_pipeline, cv2.CAP_GSTREAMER)
 # -------------------------------------------------------------
 
 # (opțional) dacă vrei totuși să reduci la 320x240 pentru viteză
