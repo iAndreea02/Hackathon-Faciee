@@ -11,12 +11,14 @@ from kivy.uix.screenmanager import ScreenManager, FadeTransition
 # Importăm paginile principale
 from start_page import StartPage
 from menu_page import MenuPage
+from tinder import TinderPage
 
 # Importăm paginile departamentelor din folderul 'pagini'
 from pagini.automatica import AutomaticaPage
 from pagini.cti import CtiPage
 from pagini.ieti import IetiPage
 from pagini.electrica import ElectricaPage
+from pagini.harta import MapPage
 
 class MyApp(App):
     def build(self):
