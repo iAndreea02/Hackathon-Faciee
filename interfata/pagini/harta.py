@@ -21,12 +21,39 @@ except ImportError:
     print("[WARN] Picamera2 nu este instalat. Se va folosi OpenCV.")
     HAS_PICAMERA = False
 
-# --- AJUSTARE PATH ---
-PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+# --- CONFIGURARE CĂI (PATHS) BAZAT PE IMAGINEA TA ---
+# 1. Aflăm unde este acest fișier (harta.py, care e în 'interfata')
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# 2. Mergem un nivel mai sus (în 'Hackathon-Faciee')
+PROJECT_ROOT = os.path.dirname(CURRENT_DIR)
+
+# 3. Construim calea către HARTA/assets
+ASSETS_DIR = os.path.join(PROJECT_ROOT, "HARTA", "assets")
+
+# 4. Adăugăm folderul HARTA la path pentru a putea importa modulele din el (hands, face)
 sys.path.append(os.path.join(PROJECT_ROOT, "HARTA"))
 
-from face.face_processor import FaceProcessor
-from hands.hand_detector import HandDetector
+# --- IMPORTURILE TALE (care sunt în folderul HARTA) ---
+try:
+    from face.face_processor import FaceProcessor
+    from hands.hand_detector import HandDetector
+except ImportError as e:
+    print(f"Eroare la importul modulelor de detecție: {e}")
+    # Clase dummy pentru a nu crăpa aplicația dacă path-ul e greșit
+    class HandDetector: 
+        def detect(self, img): return None
+    class FaceProcessor: pass
+
+# --- PATH-URI IMAGINI ---
+HARTA_PATH = os.path.join(ASSETS_DIR, "harta_buna1.png")
+ROBOT_PATH = os.path.join(ASSETS_DIR, "robot_fata.png")
+
+# Debugging Paths
+if os.path.exists(HARTA_PATH):
+    print(f"[OK] Harta gasită la: {HARTA_PATH}")
+else:
+    print(f"[EROARE] Harta NU există la: {HARTA_PATH}")
 
 # --- VARIABILE GLOBALE ---
 shared_frame = None
@@ -67,7 +94,7 @@ class RoundedCard(BoxLayout):
         if hasattr(self, 'border'):
             self.border.rounded_rectangle = (self.x, self.y, self.width, self.height, self.radius_val)
 
-# --- THREAD CAMERA UNIFICAT (Picamera2 + OpenCV) ---
+# --- THREAD CAMERA UNIFICAT (Picamera2 + OpenCV + COLOR CORRECTION) ---
 def camera_control_thread(detector_h, detector_f):
     global shared_frame, shared_gesture, stop_camera_thread
     
@@ -75,7 +102,11 @@ def camera_control_thread(detector_h, detector_f):
     cap = None
     using_picamera = False
 
-    # 1. Încercare Inițializare Picamera2
+    # --- SETĂRI CORECȚIE CULOARE ---
+    CONTRAST_FACTOR = 1.2
+    BRIGHTNESS_OFFSET = 15
+
+    # 1. Configurare Picamera2
     if HAS_PICAMERA:
         try:
             print("[THREAD] Configurare Picamera2...")
@@ -110,7 +141,6 @@ def camera_control_thread(detector_h, detector_f):
             # A. Captură
             if using_picamera:
                 try:
-                    # capture_array returnează RGB888 direct
                     frame = picam2.capture_array()
                 except Exception as e:
                     print(f"[THREAD] Eroare captură Picamera: {e}")
@@ -121,22 +151,23 @@ def camera_control_thread(detector_h, detector_f):
                 if not ret:
                     time.sleep(0.01)
                     continue
-                # OpenCV dă BGR, convertim la RGB pentru MediaPipe/Kivy
                 frame = cv2.cvtColor(bgr_frame, cv2.COLOR_BGR2RGB)
 
             if frame is None: continue
 
-            # B. Procesare (Flip + Detectie)
-            # Flip orizontal pentru efect oglindă
+            # --- APLICARE CORECȚIE CULOARE ---
+            f_frame = frame.astype(np.float32)
+            adjusted = f_frame * CONTRAST_FACTOR + BRIGHTNESS_OFFSET
+            frame = np.clip(adjusted, 0, 255).astype(np.uint8)
+
+            # B. Procesare
             frame = cv2.flip(frame, 1)
             
-            # Detectie Mână (MediaPipe vrea RGB)
             results = detector_h.detect(frame)
             hand = detector_h.get_biggest_hand(results)
             gesture = detector_h.classify_gesture(hand)
             
-            # C. Debug Vizual (Pe imaginea RGB)
-            # Text Verde (0, 255, 0)
+            # C. Debug Vizual
             cv2.putText(frame, f"GESTURE: {gesture}", (10, 30),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
             
@@ -145,14 +176,12 @@ def camera_control_thread(detector_h, detector_f):
                 shared_frame = frame
                 shared_gesture = gesture
             
-            # Limitare FPS (~30)
             time.sleep(1/30)
 
     except Exception as e:
         print(f"[THREAD] Eroare în buclă: {e}")
 
     finally:
-        # Curățare resurse la ieșire
         print("[THREAD] Oprire cameră...")
         if using_picamera and picam2:
             picam2.stop()
@@ -179,9 +208,8 @@ class MapPage(Screen):
         layout = FloatLayout()
         self.add_widget(layout)
 
-        # 1. LAYER HARTA
-        harta_img_path = os.path.join(PROJECT_ROOT, "HARTA", "assets", "harta_buna1.png")
-        self.map_image = KivyImage(source=harta_img_path, size_hint=(None, None), size=(1200, 1000), pos=(0,0))
+        # 1. LAYER HARTA (Folosim HARTA_PATH calculat sus)
+        self.map_image = KivyImage(source=HARTA_PATH, size_hint=(None, None), size=(1200, 1000), pos=(0,0))
         self.map_image.size_hint = (2.0, 2.0) 
         self.map_image.allow_stretch = True
         layout.add_widget(self.map_image)
@@ -190,8 +218,8 @@ class MapPage(Screen):
         self.robot_pos_x = self.map_image.width / 2
         self.robot_pos_y = self.map_image.height / 2
 
-        robot_img_path = os.path.join(PROJECT_ROOT, "HARTA", "assets", "robot_fata.png")
-        self.robot_widget = KivyImage(source=robot_img_path, size_hint=(None,None), size=('80dp','80dp'),
+        # Folosim ROBOT_PATH
+        self.robot_widget = KivyImage(source=ROBOT_PATH, size_hint=(None,None), size=('80dp','80dp'),
                                       allow_stretch=True)
         self.robot_widget.center_x = Window.width / 2
         self.robot_widget.center_y = Window.height / 2
@@ -285,7 +313,7 @@ class MapPage(Screen):
     def update_kivy_ui(self, dt):
         global shared_frame, shared_gesture
         
-        # 1. Actualizare Gesturi și Hartă
+        # 1. Update Gesturi
         gesture = shared_gesture
         map_step = 200*dt
 
@@ -295,11 +323,9 @@ class MapPage(Screen):
         elif gesture == "BACK":     self.robot_pos_y -= map_step
         elif gesture == "OPEN_PALM": pass
 
-        # Limite hartă
         self.robot_pos_x = max(0, min(self.robot_pos_x, 600))
         self.robot_pos_y = max(250, min(self.robot_pos_y, 750))
 
-        # Zoom & Pan
         zoom_x = self.map_image.size[0] / Window.width
         zoom_y = self.map_image.size[1] / Window.height
         zoom_factor = min(zoom_x, zoom_y)
@@ -314,8 +340,7 @@ class MapPage(Screen):
         self.robot_widget.center_x = Window.width/2
         self.robot_widget.center_y = Window.height/2
 
-        # Update Label
-        gest_color = "00B5CC" # Cyan
+        gest_color = "00B5CC" 
         self.gesture_label.markup = True
         
         display_gest = gesture
@@ -327,19 +352,14 @@ class MapPage(Screen):
         
         self.gesture_label.text = f"GEST: [color={gest_color}]{display_gest}[/color]"
 
-        # 2. Update Imagine Cameră
+        # 2. Update Imagine
         with frame_lock:
             if shared_frame is None: return
-            # Facem o copie ca să nu avem probleme de threading
             frame = shared_frame.copy()
         
-        # Conversie pentru Kivy:
-        # 1. Flip pe verticală (Kivy are coordonatele invers față de OpenCV)
         frame_flipped = cv2.flip(frame, 0)
-        
-        # 2. Creare textură
-        # Important: Formatul trebuie să fie 'rgb' pentru că thread-ul livrează RGB
         buf = frame_flipped.tobytes()
+        # Thread-ul nostru Picamera2 livreaza RGB, deci aici specificam 'rgb'
         texture = Texture.create(size=(frame_flipped.shape[1], frame_flipped.shape[0]), colorfmt='rgb')
         texture.blit_buffer(buf, colorfmt='rgb', bufferfmt='ubyte')
         self.image_widget.texture = texture
@@ -356,13 +376,9 @@ class MapPage(Screen):
     def stop_camera_logic(self, *args):
         if self.camera_is_running:
             Clock.unschedule(self.update_kivy_ui)
-            # Semnalizăm thread-ului să se oprească
             stop_camera_thread.set()
-            
-            # Așteptăm puțin să se închidă (dar nu blocăm UI-ul la infinit)
             if self.camera_thread_instance:
                 self.camera_thread_instance.join(timeout=1.0)
-            
             self.camera_is_running = False
             stop_camera_thread.clear()
             print("[GUI] Camera oprită.")
