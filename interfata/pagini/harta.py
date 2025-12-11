@@ -144,6 +144,9 @@ def camera_control_thread(detector_h, detector_f):
         except Exception:
             frame_rgb = frame_bgr.copy()
 
+        frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB).copy()
+   
+
         # C. Procesare
         frame_rgb = cv2.flip(frame_rgb, 1)
         
