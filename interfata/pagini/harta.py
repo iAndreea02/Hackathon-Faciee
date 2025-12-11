@@ -138,14 +138,11 @@ def camera_control_thread(detector_h, detector_f):
             time.sleep(0.01)
             continue
 
-        # B. Conversie BGR -> RGB
+        # B. Conversie BGR -> RGB rapid și corect pentru Kivy
         try:
-            frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB).copy()
+            frame_rgb = np.ascontiguousarray(frame_bgr[..., ::-1])
         except Exception:
-            frame_rgb = frame_bgr.copy()
-
-        frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB).copy()
-   
+            frame_rgb = np.ascontiguousarray(frame_bgr)
 
         # C. Procesare
         frame_rgb = cv2.flip(frame_rgb, 1)
