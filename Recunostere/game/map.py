@@ -24,7 +24,7 @@ class GameMap:
         self.logos = {
             "Automatica": load_icon("automatica1.png"),
             "Calculatoare": load_icon("calculatoare1.png"),
-            "Inginerie Electrică": load_icon("inginerie electrica1.png"),
+            "Inginerie Electrică": load_icon("inginerie_electrica1.png"),
             "Inginerie Electronică": load_icon("electronica1.png")
         }
 
