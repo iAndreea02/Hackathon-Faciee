@@ -63,7 +63,7 @@ class RoundedCard(BoxLayout):
         if hasattr(self, 'border'):
             self.border.rounded_rectangle = (self.x, self.y, self.width, self.height, self.radius_val)
 
-class InginerieElectricaPage(Screen):
+class ElectricaPage(Screen):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
