@@ -269,14 +269,27 @@ class TinderPage(Screen):
         if HAS_PICAMERA:
             try:
                 self.picam2 = Picamera2()
+
                 config = self.picam2.create_video_configuration(
                     main={"size": (640, 480), "format": "RGB888"}
                 )
                 self.picam2.configure(config)
+
+                # Ajustări utile pentru calitate
+                self.picam2.set_controls({
+                    "AwbMode": "Auto",
+                    "Sharpness": 1.2,
+                    "Contrast": 1.1,
+                    "Saturation": 1.2
+                })
+
                 self.picam2.start()
-                time.sleep(2)
+                time.sleep(0.5)  # destul, nu sta 2 secunde
+
                 self.using_picamera = True
-            except:
+
+            except Exception as e:
+                print("ERROR PICAMERA:", e)
                 self.using_picamera = False
                 self.picam2 = None
         else:
