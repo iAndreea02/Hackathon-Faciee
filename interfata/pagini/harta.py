@@ -13,32 +13,53 @@ from kivy.core.window import Window
 import os, sys, threading, time, cv2
 import numpy as np
 
-# --- 1. CONFIGURARE CĂI (FIXED) ---
-# Locația acestui fișier (interfata/harta.py)
+# =========================================================================
+# 1. SISTEM INTELIGENT DE DETECTARE A CĂILOR (FIX PENTRU RASPBERRY PI)
+# =========================================================================
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.dirname(CURRENT_DIR) # Urcăm un nivel
 
-# Urcăm un nivel mai sus (în folderul 'Hackathon-Faciee')
-# Dacă harta.py e în 'interfata', PROJECT_ROOT devine folderul părinte
-PROJECT_ROOT = os.path.dirname(CURRENT_DIR) 
+# Încercăm să găsim folderul HARTA (poate fi "HARTA", "harta" sau "Harta")
+# Căutăm atât în folderul părinte (structura corectă), cât și în folderul curent (fallback)
+harta_folder_name = None
+harta_root_path = None
 
-# Construim calea către HARTA/assets (folderul frate cu interfata)
-ASSETS_DIR = os.path.join(PROJECT_ROOT, "HARTA", "assets")
+possible_locations = [PROJECT_ROOT, CURRENT_DIR]
+possible_names = ["HARTA", "harta", "Harta"]
 
-# Adăugăm folderul HARTA la sistem pentru importuri
-sys.path.append(os.path.join(PROJECT_ROOT, "HARTA"))
+print("--- DIAGNOSTICARE CĂI ---")
+for loc in possible_locations:
+    for name in possible_names:
+        candidate = os.path.join(loc, name)
+        if os.path.exists(candidate) and os.path.isdir(candidate):
+            harta_root_path = candidate
+            print(f"[PATH] Găsit folder HARTA la: {harta_root_path}")
+            break
+    if harta_root_path: break
 
-# Căile imaginilor
-HARTA_PATH = os.path.join(ASSETS_DIR, "harta_buna1.png")
-ROBOT_PATH = os.path.join(ASSETS_DIR, "robot_fata.png")
+if harta_root_path:
+    # 1. Adăugăm la System Path pentru ca importurile (face, hands) să meargă
+    if harta_root_path not in sys.path:
+        sys.path.append(harta_root_path)
+        print(f"[IMPORT] Adăugat la sys.path: {harta_root_path}")
 
-# --- DEBUG PATHS (Verifică consola!) ---
-print(f"\n[PATH] Caut harta la: {HARTA_PATH}")
-if os.path.exists(HARTA_PATH):
-    print("[PATH] ✔ Harta GĂSITĂ!")
+    # 2. Configurare Căi Imagini
+    ASSETS_DIR = os.path.join(harta_root_path, "assets")
+    HARTA_PATH = os.path.join(ASSETS_DIR, "harta_buna1.png")
+    ROBOT_PATH = os.path.join(ASSETS_DIR, "robot_fata.png")
 else:
-    print("[PATH] ❌ EROARE: Harta NU EXISTĂ la calea calculată!")
-    # Fallback: Încercăm calea directă relativă pentru test
-    print(f"[PATH] Structura detectată: {os.listdir(CURRENT_DIR)}")
+    print("[CRITICAL ERROR] Nu am găsit folderul HARTA/harta nicăieri!")
+    # Fallback paths (vor eșua probabil, dar definim variabilele)
+    HARTA_PATH = "harta_buna1.png"
+    ROBOT_PATH = "robot_fata.png"
+
+# Verificăm explicit imaginile
+if not os.path.exists(HARTA_PATH):
+    print(f"[IMG ERROR] Nu găsesc imaginea la: {HARTA_PATH}")
+    # Încercare disperată: poate e direct în assets cu litere mici?
+    HARTA_PATH = os.path.join(ASSETS_DIR, "harta_buna1.png".lower())
+
+# =========================================================================
 
 # --- IMPORT MODULE DETECȚIE ---
 try:
@@ -115,7 +136,6 @@ def camera_control_thread(detector_h, detector_f):
         try:
             print("[CAM] Inițializare Picamera2...")
             picam2 = Picamera2()
-            # Folosim 640x480 pentru performanță (MediaPipe merge greu la 1280x720 pe Pi)
             config = picam2.create_video_configuration(
                 main={"size": (640, 480), "format": "RGB888"}
             )
@@ -126,7 +146,9 @@ def camera_control_thread(detector_h, detector_f):
         except Exception as e:
             print(f"[CAM ERROR] Picamera2 a eșuat: {e}. Trec pe OpenCV.")
             using_picamera = False
-            if picam2: picam2.stop()
+            if picam2: 
+                try: picam2.stop()
+                except: pass
 
     # 2. Fallback OpenCV
     if not using_picamera:
@@ -171,7 +193,7 @@ def camera_control_thread(detector_h, detector_f):
             hand = detector_h.get_biggest_hand(results)
             gesture = detector_h.classify_gesture(hand)
         except Exception as e:
-            print(f"[DETECT ERROR] {e}")
+            # print(f"[DETECT ERROR] {e}") # Uncomment for deep debug
             gesture = "NONE"
         
         # D. Trimite spre GUI
@@ -179,12 +201,14 @@ def camera_control_thread(detector_h, detector_f):
             shared_frame = frame
             shared_gesture = gesture
         
-        time.sleep(0.02) # 50 FPS target
+        time.sleep(0.02)
 
     # Cleanup
     if using_picamera and picam2:
-        picam2.stop()
-        picam2.close()
+        try:
+            picam2.stop()
+            picam2.close()
+        except: pass
     if cap:
         cap.release()
     print("[CAM] Thread oprit.")
@@ -210,7 +234,7 @@ class MapPage(Screen):
         if os.path.exists(HARTA_PATH):
             self.map_image = KivyImage(source=HARTA_PATH, size_hint=(None, None), size=(1200, 1000), pos=(0,0))
         else:
-            self.map_image = Label(text="HARTA NOT FOUND\nVerifica consola", color=COLOR_MAGENTA)
+            self.map_image = Label(text=f"HARTA NOT FOUND\n{HARTA_PATH}", color=COLOR_MAGENTA, halign='center')
             
         self.map_image.size_hint = (2.0, 2.0) 
         self.map_image.allow_stretch = True
@@ -277,8 +301,7 @@ class MapPage(Screen):
         layout.add_widget(info_card)
 
         # BACK BTN
-        btn_back = Button(text="Înapoi", 
-                          background_normal='', background_color=COLOR_MAGENTA,
+        btn_back = Button(text="Înapoi", background_normal='', background_color=COLOR_MAGENTA,
                           color=COLOR_WHITE, bold=True, font_size='14sp',
                           size_hint=(None, None), size=(100, 40),
                           pos_hint={'x': 0.02, 'y': 0.02})
@@ -304,6 +327,7 @@ class MapPage(Screen):
     def update_kivy_ui(self, dt):
         global shared_frame, shared_gesture
         
+        # 1. Logică Joc
         gesture = shared_gesture
         map_step = 200 * dt
 
@@ -341,6 +365,7 @@ class MapPage(Screen):
         
         self.gesture_label.text = f"GEST: [color={gest_color}]{display_gest}[/color]"
 
+        # 2. Update Imagine
         with frame_lock:
             if shared_frame is None: return
             frame = shared_frame.copy()
