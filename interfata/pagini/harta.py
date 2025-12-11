@@ -284,10 +284,16 @@ class MapPage(Screen):
         with frame_lock:
             if shared_frame is None: return
             frame = shared_frame.copy()
-        frame_flipped = cv2.flip(frame, 0)
+        # Convert to RGBA and create an RGBA texture to ensure colors map correctly
+        try:
+            frame_rgba = cv2.cvtColor(frame, cv2.COLOR_RGB2RGBA)
+        except Exception:
+            # Fallback: if conversion fails, use the original frame
+            frame_rgba = frame
+        frame_flipped = cv2.flip(frame_rgba, 0)
         buf = frame_flipped.tobytes()
-        texture = Texture.create(size=(frame.shape[1], frame.shape[0]), colorfmt='rgb')
-        texture.blit_buffer(buf, colorfmt='rgb', bufferfmt='ubyte')
+        texture = Texture.create(size=(frame.shape[1], frame.shape[0]), colorfmt='rgba')
+        texture.blit_buffer(buf, colorfmt='rgba', bufferfmt='ubyte')
         self.image_widget.texture = texture
 
     def on_leave(self, *args):

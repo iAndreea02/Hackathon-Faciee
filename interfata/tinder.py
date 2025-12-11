@@ -390,10 +390,20 @@ class TinderPage(Screen):
         elif current_turn == "CENTER" and self.can_answer:
             cv2.circle(frame_bgr, (w//2, 30), 10, green_bgr, -1)
 
-        frame_rgb_display = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
-        buf = cv2.flip(frame_rgb_display, 0).tobytes()
-        texture = Texture.create(size=(w,h), colorfmt='rgb')
-        texture.blit_buffer(buf, colorfmt='rgb', bufferfmt='ubyte')
+        # Convert to RGBA and create an RGBA texture to ensure correct color mapping
+        try:
+            frame_rgb_display = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
+            frame_rgba = cv2.cvtColor(frame_rgb_display, cv2.COLOR_RGB2RGBA)
+        except Exception:
+            # Fallback: if conversion fails, try using the BGR frame directly
+            try:
+                frame_rgba = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGBA)
+            except Exception:
+                frame_rgba = frame_bgr
+
+        buf = cv2.flip(frame_rgba, 0).tobytes()
+        texture = Texture.create(size=(w, h), colorfmt='rgba')
+        texture.blit_buffer(buf, colorfmt='rgba', bufferfmt='ubyte')
         self.camera_image.texture = texture
 
     def select_answer(self, answer):
