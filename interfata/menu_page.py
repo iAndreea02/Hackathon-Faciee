@@ -190,7 +190,7 @@ class MenuPage(Screen):
             self.root.add_widget(btn)
             self.buttons.append(btn)
 
-        self.orbit_radius = 220
+        self.orbit_radius = 160
         self.angle_offset = 0
         
         # Pornire animație continuă
