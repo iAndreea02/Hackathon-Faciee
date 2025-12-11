@@ -1,7 +1,7 @@
 from kivy.config import Config
 # Setările grafice trebuie să fie primele
 Config.set('graphics', 'width', '480')
-Config.set('graphics', 'height', '800')
+Config.set('graphics', 'height', '750')
 Config.set('graphics', 'resizable', False)
 Config.set('graphics', 'fullscreen', '0')
 
