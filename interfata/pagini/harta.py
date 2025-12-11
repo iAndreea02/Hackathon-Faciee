@@ -27,21 +27,13 @@ if HARTA_ROOT not in sys.path:
 HARTA_PATH = os.path.join(ASSETS_DIR, "harta_buna1.png")
 ROBOT_PATH = os.path.join(ASSETS_DIR, "robot_fata.png")
 
-print(f"--- DEBUG CĂI ---")
-if os.path.exists(HARTA_PATH):
-    print("✔ Harta EXISTĂ.")
-else:
-    print(f"❌ Harta NU EXISTĂ la: {HARTA_PATH}")
-
 # =========================================================================
 
 # --- IMPORT MODULE DETECȚIE ---
 try:
     from face.face_processor import FaceProcessor
     from hands.hand_detector import HandDetector
-    print("[IMPORT] Module detectie OK.")
 except ImportError as e:
-    print(f"[IMPORT ERROR] Nu pot importa hands/face: {e}")
     class HandDetector: 
         def detect(self, img): return None
         def get_biggest_hand(self, res): return None
@@ -52,9 +44,7 @@ except ImportError as e:
 try:
     from picamera2 import Picamera2
     HAS_PICAMERA = True
-    print("[IMPORT] Picamera2 detectat.")
 except ImportError:
-    print("[IMPORT WARN] Picamera2 lipseste. Se va folosi OpenCV.")
     HAS_PICAMERA = False
 
 # --- VARIABILE GLOBALE ---
@@ -92,11 +82,7 @@ class RoundedCard(BoxLayout):
         if hasattr(self, 'border'):
             self.border.rounded_rectangle = (self.x, self.y, self.width, self.height, self.radius_val)
 
-# --- THREAD CAMERA (CONFIGURAT CA ÎN EXEMPLU) ---
-# ========================================================================
-# CAMERA FIX – STABILIZATĂ (PICAMERA2 + OPENCV)
-# ========================================================================
-
+# --- THREAD CAMERA ---
 def camera_control_thread(detector_h, detector_f):
     global shared_frame, shared_gesture, stop_camera_thread
     
@@ -104,56 +90,32 @@ def camera_control_thread(detector_h, detector_f):
     cap = None
     using_picamera = False
 
-    # 1. ÎNCERCARE PICAMERA2
     if HAS_PICAMERA:
         try:
-            print("[CAM] Init Picamera2...")
             picam2 = Picamera2()
-
-            config = picam2.create_video_configuration(
-                main={"size": (640, 480), "format": "RGB888"},
-                buffer_count=4
-            )
+            config = picam2.create_video_configuration(main={"size": (640, 480), "format": "RGB888"}, buffer_count=4)
             picam2.configure(config)
             picam2.start()
-
-            print("[CAM] Stabilizare 1.5 sec...")
             time.sleep(1.5)
-
             using_picamera = True
-            print("[CAM] Picamera2 PORNITĂ OK ✓")
-        except Exception as e:
-            print(f"[CAM ERROR] Picamera2 a eșuat: {e}")
+        except:
             using_picamera = False
-            try:
-                picam2.stop()
-            except:
-                pass
+            try: picam2.stop()
+            except: pass
 
-    # 2. FALLBACK OPENCV
     if not using_picamera:
-        print("[CAM] Trec pe OpenCV...")
         cap = cv2.VideoCapture(0)
-        if not cap.isOpened():
-            print("[CAM FATAL] NICIO cameră disponibilă!")
-            return
+        if not cap.isOpened(): return
 
-    # 3. LOOP CAMERA
     while not stop_camera_thread.is_set():
-
-        # --- CAPTURĂ FRAME ---
         if using_picamera:
-            try:
-                frame = picam2.capture_array()
-            except:
-                continue
+            try: frame = picam2.capture_array()
+            except: continue
         else:
             ret, bgr = cap.read()
-            if not ret:
-                continue
+            if not ret: continue
             frame = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
 
-        # --- PROCESARE ---
         frame = cv2.flip(frame, 1)
 
         try:
@@ -163,29 +125,18 @@ def camera_control_thread(detector_h, detector_f):
         except:
             gesture = "NONE"
 
-        # debug minim
-        cv2.putText(frame, gesture, (10, 30),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0,255,0), 2)
-
-        # --- SALVARE FRAME ÎN THREAD SAFE ---
         with frame_lock:
             shared_frame = frame
             shared_gesture = gesture
 
         time.sleep(0.02)
 
-    # 4. CLEANUP
     if using_picamera:
         try: picam2.stop()
         except: pass
         try: picam2.close()
         except: pass
-
-    if cap:
-        cap.release()
-
-    print("[CAM] Thread oprit ✓")
-
+    if cap: cap.release()
 
 # --- PAGINA PRINCIPALĂ ---
 class MapPage(Screen):
@@ -204,40 +155,36 @@ class MapPage(Screen):
         layout = FloatLayout()
         self.add_widget(layout)
 
-        # 1. LAYER HARTA
+        # --- HARTA ---
         if os.path.exists(HARTA_PATH):
             self.map_image = KivyImage(source=HARTA_PATH, size_hint=(None, None), size=(1200, 1000), pos=(0,0))
         else:
             self.map_image = Label(text=f"HARTA NOT FOUND\n{HARTA_PATH}", color=COLOR_MAGENTA, halign='center')
-            
         self.map_image.size_hint = (2.0, 2.0) 
         self.map_image.allow_stretch = True
         layout.add_widget(self.map_image)
 
-        # 2. LAYER ROBOT
+        # --- ROBOT ---
         if os.path.exists(ROBOT_PATH):
             self.robot_widget = KivyImage(source=ROBOT_PATH, size_hint=(None,None), size=('80dp','80dp'), allow_stretch=True)
         else:
             self.robot_widget = Label(text="[R]", color=COLOR_CYAN)
-
         self.robot_pos_x = 600
         self.robot_pos_y = 500
         self.robot_widget.center_x = Window.width / 2
         self.robot_widget.center_y = Window.height / 2
         layout.add_widget(self.robot_widget)
 
-        # 3. UI (HUD)
+        # --- LEGENDA COMENZI ---
         legend_card = RoundedCard(bg_color=(0.02, 0.05, 0.14, 0.90), radius=15,
                                   has_border=True, border_color=COLOR_CYAN,
                                   size_hint=(None, None), size=(200, 170),
                                   pos_hint={'x': 0.02, 'top': 0.98})
         legend_card.orientation = 'vertical'
         legend_card.padding = [15, 15, 15, 15]
-        
         legend_card.add_widget(Label(text="LISTA COMENZI", bold=True, font_size='12sp', 
                                      color=COLOR_CYAN, size_hint_y=None, height=20, halign='left',
                                      text_size=(170, None)))
-        
         grid = GridLayout(cols=2, spacing=5, size_hint_y=1)
         def add_row(g, a):
             lbl_g = Label(text=g, color=COLOR_MAGENTA, bold=True, font_size='11sp', halign='left')
@@ -246,7 +193,6 @@ class MapPage(Screen):
             lbl_a = Label(text=a, color=COLOR_WHITE, font_size='11sp', halign='left')
             lbl_a.bind(size=lambda *x: lbl_a.setter('text_size')(lbl_a, (lbl_a.width, None)))
             grid.add_widget(lbl_a)
-
         add_row("ROCK", "Stânga")
         add_row("PEACE", "Dreapta")
         add_row("LIKE", "Sus")
@@ -255,7 +201,7 @@ class MapPage(Screen):
         legend_card.add_widget(grid)
         layout.add_widget(legend_card)
 
-        # CAM CARD
+        # --- CARD CAMERA ---
         cam_card = RoundedCard(bg_color=(0,0,0,1), radius=15,
                                has_border=True, border_color=COLOR_CYAN,
                                size_hint=(0.35, 0.25), 
@@ -264,22 +210,22 @@ class MapPage(Screen):
         cam_card.add_widget(self.image_widget)
         layout.add_widget(cam_card)
 
-        # INFO
-        info_card = RoundedCard(bg_color=COLOR_DARK_NAVY, radius=20,
+        # --- CARD GEST DETECTAT (mai mic, sub legenda) ---
+        info_card = RoundedCard(bg_color=COLOR_DARK_NAVY, radius=15,
                                 has_border=True, border_color=COLOR_MAGENTA,
-                                size_hint=(0.6, 0.10),
-                                pos_hint={'center_x': 0.7, 'y': 0.02})
-        self.gesture_label = Label(text="AȘTEPTARE...", font_size='18sp', 
+                                size_hint=(None, None), size=(180, 60),
+                                pos_hint={'x': 0.02, 'top': 0.75})
+        self.gesture_label = Label(text="AȘTEPTARE...", font_size='14sp', 
                                    bold=True, color=COLOR_WHITE, halign='center', valign='middle')
         info_card.add_widget(self.gesture_label)
         layout.add_widget(info_card)
 
-        # BACK BTN
+        # --- BACK BTN CENTRAT ---
         btn_back = Button(text="Înapoi", 
                           background_normal='', background_color=COLOR_MAGENTA,
                           color=COLOR_WHITE, bold=True, font_size='14sp',
-                          size_hint=(None, None), size=(100, 40),
-                          pos_hint={'x': 0.02, 'y': 0.02})
+                          size_hint=(None, None), size=(120, 40),
+                          pos_hint={'center_x': 0.5, 'y': 0.02})
         btn_back.bind(on_release=lambda x: self.change_to_menu())
         layout.add_widget(btn_back)
 
@@ -302,10 +248,9 @@ class MapPage(Screen):
     def update_kivy_ui(self, dt):
         global shared_frame, shared_gesture
         
-        # 1. Update Gesturi
+        # --- Update gesturi robot ---
         gesture = shared_gesture
         map_step = 200 * dt
-
         if gesture == "ROCK":       self.robot_pos_x -= map_step
         elif gesture == "PEACE":    self.robot_pos_x += map_step
         elif gesture == "LIKE":     self.robot_pos_y += map_step
@@ -320,7 +265,6 @@ class MapPage(Screen):
 
         map_x = Window.width/2 - self.robot_pos_x * zoom_factor
         map_y = Window.height/2 - self.robot_pos_y * zoom_factor
-        
         map_x = min(0, max(map_x, Window.width - self.map_image.width*zoom_factor))
         map_y = min(0, max(map_y, Window.height - self.map_image.height*zoom_factor))
 
@@ -328,29 +272,20 @@ class MapPage(Screen):
         self.robot_widget.center_x = Window.width/2
         self.robot_widget.center_y = Window.height/2
 
+        # --- Update label gest ---
         gest_color = "00B5CC"
         self.gesture_label.markup = True
-        
-        display_gest = gesture
-        if gesture == "ROCK": display_gest = "ROCK (STANGA)"
-        elif gesture == "PEACE": display_gest = "PEACE (DREAPTA)"
-        elif gesture == "LIKE": display_gest = "LIKE (SUS)"
-        elif gesture == "BACK": display_gest = "3 DEGETE (JOS)"
-        elif gesture == "OPEN_PALM": display_gest = "PALMA (STOP)"
-        
+        display_gest = {"ROCK": "ROCK (STANGA)", "PEACE": "PEACE (DREAPTA)", 
+                        "LIKE": "LIKE (SUS)", "BACK": "3 DEGETE (JOS)", 
+                        "OPEN_PALM": "PALMA (STOP)"}.get(gesture, gesture)
         self.gesture_label.text = f"GEST: [color={gest_color}]{display_gest}[/color]"
 
-        # 2. Update Imagine
+        # --- Update imagine camera ---
         with frame_lock:
             if shared_frame is None: return
             frame = shared_frame.copy()
-        
-        # Conversie pentru Kivy:
-        # Frame-ul este RGB. Kivy vrea textura inversată pe Y -> flip(0)
         frame_flipped = cv2.flip(frame, 0)
         buf = frame_flipped.tobytes()
-        
-        # IMPORTANT: 'rgb' aici, deoarece frame-ul a fost deja configurat ca RGB
         texture = Texture.create(size=(frame.shape[1], frame.shape[0]), colorfmt='rgb')
         texture.blit_buffer(buf, colorfmt='rgb', bufferfmt='ubyte')
         self.image_widget.texture = texture
@@ -372,4 +307,3 @@ class MapPage(Screen):
                 self.camera_thread_instance.join(timeout=1.0)
             self.camera_is_running = False
             stop_camera_thread.clear()
-            print("[GUI] Camera oprită.")
