@@ -189,6 +189,11 @@ class TinderPage(Screen):
         self.last_turn = "CENTER"
         self.required_hold_time = 2.0
 
+        # --- SETĂRI CORECȚIE CULOARE ---
+        # Ajustează aceste valori dacă imaginea e prea întunecată sau ștearsă
+        self.contrast_factor = 1.2      # > 1.0 crește contrastul
+        self.brightness_offset = 15     # Valoare pozitivă crește luminozitatea
+
         # UI SETUP
         with self.canvas.before:
             Color(*COLOR_BG)
@@ -260,10 +265,18 @@ class TinderPage(Screen):
         self.bg_rect.pos = self.pos
         self.bg_rect.size = self.size
 
+    # --- FUNCȚIE NOUĂ PENTRU CORECȚIE CULOARE ---
+    def apply_color_correction(self, frame):
+        # Convertim la float pentru a evita overflow în timpul calculelor
+        f_frame = frame.astype(np.float32)
+        # Aplicăm contrast și luminozitate
+        adjusted = f_frame * self.contrast_factor + self.brightness_offset
+        # Ne asigurăm că valorile sunt între 0 și 255 și convertim înapoi la uint8
+        return np.clip(adjusted, 0, 255).astype(np.uint8)
+
     def on_enter(self):
         print("[DEBUG] on_enter declanșat. Inițializez camera...")
         
-        # LOGICA PICAMERA2 IDENTICĂ CU EXEMPLUL TĂU FUNCȚIONAL
         if HAS_PICAMERA:
             try:
                 print("[DEBUG] Configurare Picamera2...")
@@ -359,11 +372,15 @@ class TinderPage(Screen):
 
         if frame is None: return
 
+        # --- APLICARE CORECȚIE CULOARE (Nou) ---
+        # Aplicăm corecția pe cadrul RGB înainte de orice altă procesare
+        frame = self.apply_color_correction(frame)
+
         # Flip pentru efect oglindă
         frame = cv2.flip(frame, 1)
         h, w, _ = frame.shape
         
-        # --- PROCESARE (MediaPipe primește RGB) ---
+        # --- PROCESARE (MediaPipe primește RGB corectat) ---
         mesh_results = self.face_processor.process(frame)
         current_turn = self.face_processor.get_head_turn(mesh_results, w)
 
@@ -401,10 +418,7 @@ class TinderPage(Screen):
             if current_turn == "CENTER":
                 self.can_answer = True
 
-        # --- DESENARE FEEDBACK (Pe array-ul RGB) ---
-        # ATENȚIE: În RGB, (255, 0, 0) este ROSU, nu Albastru ca în BGR
-        # Cyan = (0, 255, 255), Magenta = (255, 0, 255)
-        
+        # --- DESENARE FEEDBACK (Pe array-ul RGB corectat) ---
         line_color = (255, 0, 255) # Magenta
         if current_turn == "LEFT":
             cv2.line(frame, (0,0), (0,h), line_color, 10)
