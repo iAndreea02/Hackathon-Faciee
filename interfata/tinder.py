@@ -107,18 +107,22 @@ screen_map = {
     "Inginerie Electronica si Telecomunicatii - Retele si Software": "etc"
 }
 
+# --- CLASA ROUNDED CARD ---
 class RoundedCard(BoxLayout):
     def __init__(self, bg_color, radius=20, padding_val=[10,10,10,10], has_border=False, border_color=None, **kwargs):
         super().__init__(**kwargs)
         self.padding = padding_val
         self.bg_color_rgba = bg_color
         self.radius_val = radius
+        self.border_color_rgba = border_color if border_color else [0,0,0,0]
+        
         with self.canvas.before:
             Color(*self.bg_color_rgba)
             self.rect = RoundedRectangle(pos=self.pos, size=self.size, radius=[radius])
             if has_border:
-                Color(*border_color)
+                self.border_color_instruction = Color(*self.border_color_rgba)
                 self.border = Line(rounded_rectangle=(self.x, self.y, self.width, self.height, radius), width=3)
+        
         self.bind(pos=self._update_rect, size=self._update_rect)
 
     def _update_rect(self, *args):
@@ -129,14 +133,10 @@ class RoundedCard(BoxLayout):
             self.border.rounded_rectangle = (self.x, self.y, self.width, self.height, self.radius_val)
             
     def update_border_color(self, color):
-        if hasattr(self, 'border'):
-            # Recreem instrucțiunea de culoare pentru border dacă e nevoie, 
-            # dar aici simplificăm prin setarea culorii direct dacă a fost creată cu Color
-            # (Kivy nu permite schimbarea directă a 'rgba' la un obiect Color deja desenat 
-            # decât dacă păstrăm referința. Aici recreem logica simplă).
-            # Pentru simplitate în acest exemplu, presupunem că merge sau e doar vizual.
-            pass
+        if hasattr(self, 'border_color_instruction'):
+            self.border_color_instruction.rgba = color
 
+# --- FACE PROCESSOR ---
 class FaceProcessor:
     def __init__(self):
         self.mp_face = mp.solutions.face_detection
@@ -145,7 +145,7 @@ class FaceProcessor:
                                           refine_landmarks=True, min_detection_confidence=0.5, min_tracking_confidence=0.5)
 
     def process(self, frame_rgb):
-        # MediaPipe are nevoie de RGB
+        # MediaPipe are nevoie de RGB.
         frame_rgb.flags.writeable = False
         mesh_results = self.mesh.process(frame_rgb)
         frame_rgb.flags.writeable = True
@@ -170,10 +170,12 @@ class FaceProcessor:
         else:
             return "CENTER"
 
+# --- ECRAN TINDER ---
 class TinderPage(Screen):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.face_processor = FaceProcessor()
+        
         self.picam2 = None
         self.cap = None
         self.using_picamera = False
@@ -186,6 +188,7 @@ class TinderPage(Screen):
         self.last_turn = "CENTER"
         self.required_hold_time = 2.0
 
+        # UI SETUP
         with self.canvas.before:
             Color(*COLOR_BG)
             self.bg_rect = RoundedRectangle(pos=self.pos, size=self.size, radius=[0])
@@ -194,43 +197,62 @@ class TinderPage(Screen):
         self.main_layout = BoxLayout(orientation='vertical', spacing=20, padding=[20, 20, 20, 20])
         self.add_widget(self.main_layout)
 
-        # UI Components
-        self.question_card = RoundedCard(bg_color=COLOR_DARK_NAVY, radius=20, has_border=True, border_color=COLOR_CYAN, size_hint_y=0.25)
-        self.lbl_question = Label(text="Se incarca...", font_size='20sp', bold=True, color=COLOR_WHITE, halign='center', valign='middle')
+        # 1. INTREBARE
+        self.question_card = RoundedCard(bg_color=COLOR_DARK_NAVY, radius=20, 
+                                         has_border=True, border_color=COLOR_CYAN,
+                                         size_hint_y=0.25)
+        self.lbl_question = Label(text="Se incarca...", font_size='20sp', bold=True, 
+                                  color=COLOR_WHITE, halign='center', valign='middle')
         self.lbl_question.bind(size=lambda *x: self.lbl_question.setter('text_size')(self.lbl_question, (self.lbl_question.width - 20, None)))
         self.question_card.add_widget(self.lbl_question)
         self.main_layout.add_widget(self.question_card)
 
+        # 2. CAMERA
         self.camera_container = FloatLayout(size_hint_y=0.55)
-        self.camera_card = RoundedCard(bg_color=(0,0,0,1), radius=20, has_border=True, border_color=COLOR_MAGENTA, size_hint=(0.8, 1), pos_hint={'center_x': 0.5, 'center_y': 0.5})
+        
+        self.camera_card = RoundedCard(bg_color=(0,0,0,1), radius=20, 
+                                       has_border=True, border_color=COLOR_MAGENTA,
+                                       size_hint=(0.8, 1), pos_hint={'center_x': 0.5, 'center_y': 0.5})
         self.camera_image = Image(allow_stretch=True, keep_ratio=True)
         self.camera_card.add_widget(self.camera_image)
         self.camera_container.add_widget(self.camera_card)
 
-        self.card_left = RoundedCard(bg_color=(0, 0, 0, 0.6), radius=15, has_border=True, border_color=COLOR_CYAN, size_hint=(0.35, 0.3), pos_hint={'x': 0.02, 'center_y': 0.5})
+        # STANGA
+        self.card_left = RoundedCard(bg_color=(0, 0, 0, 0.6), radius=15, 
+                                     has_border=True, border_color=COLOR_CYAN,
+                                     size_hint=(0.35, 0.3), pos_hint={'x': 0.02, 'center_y': 0.5})
         self.card_left.orientation = 'vertical'
         self.lbl_left_title = Label(text="STANGA", font_size='12sp', color=COLOR_CYAN, bold=True, size_hint_y=0.3)
         self.card_left.add_widget(self.lbl_left_title)
-        self.lbl_left = Label(text="", font_size='14sp', bold=True, color=COLOR_WHITE, halign='center', valign='middle')
+        self.lbl_left = Label(text="", font_size='14sp', bold=True, color=COLOR_WHITE,
+                              halign='center', valign='middle')
         self.lbl_left.bind(size=lambda *x: self.lbl_left.setter('text_size')(self.lbl_left, (self.lbl_left.width, None)))
         self.card_left.add_widget(self.lbl_left)
         self.camera_container.add_widget(self.card_left)
 
-        self.card_right = RoundedCard(bg_color=(0, 0, 0, 0.6), radius=15, has_border=True, border_color=COLOR_CYAN, size_hint=(0.35, 0.3), pos_hint={'right': 0.98, 'center_y': 0.5})
+        # DREAPTA
+        self.card_right = RoundedCard(bg_color=(0, 0, 0, 0.6), radius=15, 
+                                      has_border=True, border_color=COLOR_CYAN,
+                                      size_hint=(0.35, 0.3), pos_hint={'right': 0.98, 'center_y': 0.5})
         self.card_right.orientation = 'vertical'
         self.lbl_right_title = Label(text="DREAPTA", font_size='12sp', color=COLOR_CYAN, bold=True, size_hint_y=0.3)
         self.card_right.add_widget(self.lbl_right_title)
-        self.lbl_right = Label(text="", font_size='14sp', bold=True, color=COLOR_WHITE, halign='center', valign='middle')
+        self.lbl_right = Label(text="", font_size='14sp', bold=True, color=COLOR_WHITE,
+                               halign='center', valign='middle')
         self.lbl_right.bind(size=lambda *x: self.lbl_right.setter('text_size')(self.lbl_right, (self.lbl_right.width, None)))
         self.card_right.add_widget(self.lbl_right)
         self.camera_container.add_widget(self.card_right)
 
         self.main_layout.add_widget(self.camera_container)
 
-        self.lbl_status = Label(text="Intoarce capul si MENTINE 2 secunde", font_size='14sp', color=COLOR_WHITE, size_hint_y=0.1)
+        # 3. STATUS
+        self.lbl_status = Label(text="Intoarce capul si MENTINE 2 secunde", 
+                                font_size='14sp', color=COLOR_WHITE, size_hint_y=0.1)
         self.main_layout.add_widget(self.lbl_status)
 
-        self.btn_back = Button(text="Inapoi la Meniu", size_hint=(1, None), height=50, background_normal='', background_color=COLOR_MAGENTA, bold=True)
+        # 4. BUTON BACK
+        self.btn_back = Button(text="Inapoi la Meniu", size_hint=(1, None), height=50,
+                               background_normal='', background_color=COLOR_MAGENTA, bold=True)
         self.btn_back.bind(on_release=self.go_back)
 
     def update_bg(self, *args):
@@ -238,45 +260,60 @@ class TinderPage(Screen):
         self.bg_rect.size = self.size
 
     def on_enter(self):
+        print("[DEBUG] on_enter: Resetare completa...")
+        
+        # RESET UI
         self.main_layout.clear_widgets()
         self.main_layout.add_widget(self.question_card)
         self.main_layout.add_widget(self.camera_container)
         self.main_layout.add_widget(self.lbl_status)
         
+        # RESET LOGIC
         self.index = 0
         self.selected_answers = []
         self.can_answer = True
         self.hold_start_time = 0
         self.last_turn = "CENTER"
+        self.card_left.update_border_color(COLOR_CYAN)
+        self.card_right.update_border_color(COLOR_CYAN)
         self.update_question_ui()
 
-        Clock.schedule_once(self.start_camera_sequence, 0.1)
-
-    def start_camera_sequence(self, dt):
+        # --- PORNIRE CAMERA (FIX CULOARE) ---
         if HAS_PICAMERA:
             try:
+                print("[DEBUG] Configurare Picamera2...")
                 self.picam2 = Picamera2()
-                # Configurare RGB888 explicită
-                config = self.picam2.create_video_configuration(main={"size": (640, 480), "format": "RGB888"})
-                self.picam2.configure(config)
-                self.picam2.start() # Pornire simplă
                 
-                # Așteptare calibrare (esențial pentru culori corecte)
-                time.sleep(1.5)
+                # CONFIGURARE EXPLICITĂ: RGB888
+                config = self.picam2.create_video_configuration(
+                    main={"size": (640, 480), "format": "RGB888"}
+                )
+                self.picam2.configure(config)
+                
+                # Start fără controale specifice (folosim auto default)
+                self.picam2.start()
+                
+                print("[DEBUG] Calibrare culori (2s)...")
+                time.sleep(2)
                 
                 self.using_picamera = True
-            except:
+                print("[DEBUG] Picamera2 pornită cu succes!")
+            except Exception as e:
+                print(f"[ERROR] Picamera2 eșuat: {e}. Trec pe OpenCV.")
                 self.using_picamera = False
                 self.picam2 = None
         else:
             self.using_picamera = False
 
         if not self.using_picamera:
+            print("[DEBUG] Pornire OpenCV...")
             self.cap = cv2.VideoCapture(0)
 
+        # Loop la 30 FPS
         self._camera_event = Clock.schedule_interval(self.update, 1.0/30.0)
 
     def on_leave(self):
+        print("[DEBUG] on_leave: Cleanup...")
         if self.using_picamera and self.picam2:
             try:
                 self.picam2.stop()
@@ -298,6 +335,9 @@ class TinderPage(Screen):
             self.lbl_question.text = q_data["question"]
             self.lbl_left.text = q_data["options"][0]
             self.lbl_right.text = q_data["options"][1]
+            
+            self.card_left.update_border_color(COLOR_CYAN)
+            self.card_right.update_border_color(COLOR_CYAN)
             self.lbl_status.text = "Intoarce capul si MENTINE 2 secunde"
             self.lbl_status.color = COLOR_WHITE
         else:
@@ -306,28 +346,31 @@ class TinderPage(Screen):
     def update(self, dt):
         if self.index >= len(questions): return
 
-        # 1. CAPTURĂ
-        # Vrem să ajungem la un frame BGR (standard OpenCV) pentru procesare
+        # 1. CAPTURĂ BGR
+        # Indiferent de sursă, vrem să avem un frame BGR la început.
+        # Acest lucru ne permite să desenăm corect (OpenCV desenează în BGR)
+        # și să convertim corect la final.
         frame_bgr = None
         
-        if self.using_picamera:
+        if self.using_picamera and self.picam2:
             try:
                 # Picamera livrează RGB888 (conform config)
                 frame_rgb_raw = self.picam2.capture_array()
-                # Convertim în BGR pentru a standardiza pipeline-ul (OpenCV desenează în BGR)
+                # Convertim imediat la BGR pentru procesare standard
                 frame_bgr = cv2.cvtColor(frame_rgb_raw, cv2.COLOR_RGB2BGR)
             except: return
         elif self.cap:
-            ret, frame_bgr = self.cap.read() # OpenCV livrează BGR
+            ret, frame_bgr = self.cap.read() # OpenCV livrează BGR direct
             if not ret: return
 
         if frame_bgr is None: return
 
         # 2. PROCESARE
+        # Flip pentru efect oglindă
         frame_bgr = cv2.flip(frame_bgr, 1)
         h, w, _ = frame_bgr.shape
         
-        # Convertim la RGB doar pentru MediaPipe (care vrea RGB)
+        # MediaPipe primește RGB
         frame_rgb_mp = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
         mesh_results = self.face_processor.process(frame_rgb_mp)
         current_turn = self.face_processor.get_head_turn(mesh_results, w)
@@ -337,6 +380,8 @@ class TinderPage(Screen):
             self.hold_start_time = time.time()
             self.last_turn = current_turn
             if self.can_answer:
+                self.card_left.update_border_color(COLOR_CYAN)
+                self.card_right.update_border_color(COLOR_CYAN)
                 self.lbl_status.text = "Mentine pozitia..."
 
         elapsed = time.time() - self.hold_start_time
@@ -358,8 +403,8 @@ class TinderPage(Screen):
             if current_turn == "CENTER":
                 self.can_answer = True
 
-        # 4. DESENARE (Pe frame-ul BGR)
-        # Culorile în BGR: (Blue, Green, Red)
+        # 4. DESENARE FEEDBACK (Pe frame-ul BGR)
+        # Culorile în BGR: Magenta=(255,0,255), Verde=(0,255,0)
         magenta_bgr = (255, 0, 255)
         green_bgr = (0, 255, 0)
         
@@ -371,13 +416,13 @@ class TinderPage(Screen):
             cv2.circle(frame_bgr, (w//2, 30), 10, green_bgr, -1)
 
         # 5. CONVERSIE FINALĂ PENTRU KIVY (BGR -> Texture)
-        # Kivy vrea textura inversată pe Y
+        # Kivy vrea textura inversată pe Y -> flip(0)
         frame_flipped = cv2.flip(frame_bgr, 0)
         # Convertim BGR -> RGB pentru afișare corectă în Kivy
         frame_final = cv2.cvtColor(frame_flipped, cv2.COLOR_BGR2RGB)
         
         buf = frame_final.tobytes()
-        texture = Texture.create(size=(w, h), colorfmt='rgb')
+        texture = Texture.create(size=(w, h), colorfmt='rgb') # RGB!
         texture.blit_buffer(buf, colorfmt='rgb', bufferfmt='ubyte')
         self.camera_image.texture = texture
 
