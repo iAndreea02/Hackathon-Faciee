@@ -268,7 +268,7 @@ class MapPage(Screen):
         info_card = RoundedCard(bg_color=COLOR_DARK_NAVY, radius=20,
                                 has_border=True, border_color=COLOR_MAGENTA,
                                 size_hint=(0.6, 0.10),
-                                pos_hint={'center_x': 0.5, 'y': 0.02})
+                                pos_hint={'center_x': 0.05, 'y': 0.02})
         self.gesture_label = Label(text="AȘTEPTARE...", font_size='18sp', 
                                    bold=True, color=COLOR_WHITE, halign='center', valign='middle')
         info_card.add_widget(self.gesture_label)
