@@ -259,18 +259,13 @@ class TinderPage(Screen):
         self.bg_rect.size = self.size
 
     def on_enter(self):
-        print("[DEBUG] on_enter declanșat. Resetare totală chestionar...")
+        print("[DEBUG] on_enter: Resetare si pornire camera cu AWB/AE...")
         
         # --- RESETARE UI ---
-        # Ștergem orice widget care ar fi putut rămâne (ex: rezultate)
         self.main_layout.clear_widgets()
-        
-        # Re-adăugăm widget-urile originale de chestionar
         self.main_layout.add_widget(self.question_card)
         self.main_layout.add_widget(self.camera_container)
         self.main_layout.add_widget(self.lbl_status)
-        # Butonul de back nu e în chestionar, doar la rezultate, dar putem să îl punem jos opțional dacă vrei
-        # Deocamdată îl lăsăm doar la rezultate, ca să nu aglomerăm
         
         # --- RESETARE LOGICĂ ---
         self.index = 0
@@ -278,42 +273,53 @@ class TinderPage(Screen):
         self.can_answer = True
         self.hold_start_time = 0
         self.last_turn = "CENTER"
-        
-        # Resetare vizuală chenare
         self.card_left.update_border_color(COLOR_CYAN)
         self.card_right.update_border_color(COLOR_CYAN)
-        
-        # Actualizare text prima întrebare
         self.update_question_ui()
 
-        # --- PORNIRE CAMERA ---
+        # --- PORNIRE CAMERA (MODIFICAT PENTRU CULORI NATURALE) ---
         if HAS_PICAMERA:
             try:
-                print("[DEBUG] Configurare Picamera2...")
+                print("[DEBUG] Configurare Picamera2 (RGB888)...")
                 self.picam2 = Picamera2()
                 config = self.picam2.create_video_configuration(
                     main={"size": (640, 480), "format": "RGB888"}
                 )
                 self.picam2.configure(config)
-                self.picam2.start()
+                
+                # --- FORTARE MODURI AUTOMATE (AWB/AE) ---
+                print("[DEBUG] Pornire cu AWB=auto, AE=normal...")
+                self.picam2.start(controls={
+                    "AwbMode": "auto",
+                    "AeExposureMode": "normal",
+                    "AeMeteringMode": "matrix"
+                })
+                
+                # --- ESENTIAL: PAUZA PENTRU REGLARE CULORI ---
+                print("[DEBUG] Astept 1.5s pentru calibrare culori...")
+                time.sleep(1.5)
+                
                 self.using_picamera = True
-                print("[DEBUG] Picamera2 pornită!")
+                print("[DEBUG] Picamera2 gata!")
             except Exception as e:
-                print(f"[ERROR] Picamera2: {e}. Fallback OpenCV.")
+                print(f"[ERROR] Picamera2 fail: {e}. Fallback OpenCV.")
                 self.using_picamera = False
                 self.picam2 = None
         else:
             self.using_picamera = False
 
         if not self.using_picamera:
-            print("[DEBUG] Pornesc OpenCV...")
-            self.cap = cv2.VideoCapture(0)
+            print("[DEBUG] Pornesc OpenCV (V4L2 backend)...")
+            # Fortam backend-ul V4L2 pe Linux pentru culori mai bune
+            self.cap = cv2.VideoCapture(0, cv2.CAP_V4L2)
+            if not self.cap.isOpened():
+                 # Fallback la default daca V4L2 nu merge
+                 self.cap = cv2.VideoCapture(0)
 
-        # Pornim loop
         self._camera_event = Clock.schedule_interval(self.update, 1.0/30.0)
 
     def on_leave(self):
-        print("[DEBUG] on_leave: Oprire...")
+        print("[DEBUG] on_leave: Cleanup...")
         if self.using_picamera and self.picam2:
             try:
                 self.picam2.stop()
@@ -349,6 +355,7 @@ class TinderPage(Screen):
         frame = None
         if self.using_picamera and self.picam2:
             try:
+                # Captureaza imaginea RGB direct de la hardware
                 frame = self.picam2.capture_array()
             except: return
         elif self.cap:
@@ -359,11 +366,10 @@ class TinderPage(Screen):
 
         if frame is None: return
 
-        # Flip
+        # Flip & Procesare
         frame = cv2.flip(frame, 1)
         h, w, _ = frame.shape
         
-        # Procesare
         mesh_results = self.face_processor.process(frame)
         current_turn = self.face_processor.get_head_turn(mesh_results, w)
 
@@ -401,7 +407,7 @@ class TinderPage(Screen):
             if current_turn == "CENTER":
                 self.can_answer = True
 
-        # Desenare Feedback
+        # Desenare (RGB)
         line_color = (255, 0, 255)
         if current_turn == "LEFT":
             cv2.line(frame, (0,0), (0,h), line_color, 10)
@@ -410,7 +416,7 @@ class TinderPage(Screen):
         elif current_turn == "CENTER" and self.can_answer:
             cv2.circle(frame, (w//2, 30), 10, (0, 255, 0), -1)
 
-        # Afișare
+        # Afișare Kivy
         buf = cv2.flip(frame, 0).tobytes()
         texture = Texture.create(size=(w, h), colorfmt='rgb')
         texture.blit_buffer(buf, colorfmt='rgb', bufferfmt='ubyte')
@@ -424,9 +430,7 @@ class TinderPage(Screen):
         Clock.schedule_once(lambda dt: self.update_question_ui(), 0.5)
 
     def show_results(self):
-        # Oprim camera când afișăm rezultatele
-        self.on_leave()
-        
+        self.on_leave() # Oprește camera
         self.main_layout.clear_widgets()
         
         match_counts = {spec: 0 for spec in specializari}
