@@ -178,7 +178,7 @@ class MenuPage(Screen):
             ("automatica.png", "automatica"),
             ("cti.png", "cti"),
             ("inginerie_electrica.png", "electrica"),
-            ("ieti.png", "etc"),
+            ("ieti.png", "ieti"),
         ]
         self.buttons = []
         for img_name, screen_name in self.specs:
