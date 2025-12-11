@@ -307,9 +307,12 @@ class MapPage(Screen):
         with frame_lock:
             if shared_frame is None: return
             frame = shared_frame.copy()
-        frame_flipped = np.ascontiguousarray(cv2.flip(frame, 0))
-        buf = frame_flipped.tobytes()
-        texture = Texture.create(size=(frame_flipped.shape[1], frame_flipped.shape[0]), colorfmt='rgb')
+        # Convert RGB -> BGR, flip Y-axis, then back to RGB for Kivy display
+        frame_bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+        frame_flipped = np.ascontiguousarray(cv2.flip(frame_bgr, 0))
+        frame_rgb = cv2.cvtColor(frame_flipped, cv2.COLOR_BGR2RGB)
+        buf = frame_rgb.tobytes()
+        texture = Texture.create(size=(frame_rgb.shape[1], frame_rgb.shape[0]), colorfmt='rgb')
         texture.blit_buffer(buf, colorfmt='rgb', bufferfmt='ubyte')
         self.image_widget.texture = texture
 

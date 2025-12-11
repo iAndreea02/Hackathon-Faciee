@@ -415,14 +415,13 @@ class TinderPage(Screen):
         elif current_turn == "CENTER" and self.can_answer:
             cv2.circle(frame_bgr, (w//2, 30), 10, green_bgr, -1)
 
-        # 5. CONVERSIE FINALĂ PENTRU KIVY (BGR -> Texture)
-        # Kivy vrea textura inversată pe Y -> flip(0)
+        # 5. CONVERSIE FINALĂ PENTRU KIVY
+        # Flip pe Y -> RGB pentru Kivy
         frame_flipped = cv2.flip(frame_bgr, 0)
-        # Convertim BGR -> RGB pentru afișare corectă în Kivy
-        frame_final = cv2.cvtColor(frame_flipped, cv2.COLOR_BGR2RGB)
+        frame_rgb = cv2.cvtColor(frame_flipped, cv2.COLOR_BGR2RGB)
         
-        buf = frame_final.tobytes()
-        texture = Texture.create(size=(w, h), colorfmt='rgb') # RGB!
+        buf = frame_rgb.tobytes()
+        texture = Texture.create(size=(w, h), colorfmt='rgb')
         texture.blit_buffer(buf, colorfmt='rgb', bufferfmt='ubyte')
         self.camera_image.texture = texture
 
