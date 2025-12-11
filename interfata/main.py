@@ -36,6 +36,11 @@ class MyApp(App):
         sm.add_widget(IetiPage(name="ieti"))
         sm.add_widget(ElectricaPage(name="electrica"))
 
+        sm.add_widget(TinderPage(name="tinder"))
+
+        
+        sm.add_widget(MapPage(name="harta"))
+
         return sm
 
 if __name__ == "__main__":

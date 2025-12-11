@@ -7,6 +7,8 @@ from kivy.graphics import Color, Ellipse, Rectangle, Line
 from kivy.core.image import Image as CoreImage
 from kivy.clock import Clock
 from kivy.utils import get_color_from_hex
+from tinder import TinderPage
+
 import os
 import math
 
@@ -78,7 +80,7 @@ class MenuPage(Screen):
         self.specs = [
             ("automatica.png", "automatica"),
             ("cti.png", "cti"),
-            ("electrica.png", "electrica"),
+            ("inginerie_electrica.png", "electrica"),
             ("ieti.png", "ieti"),
         ]
         self.buttons = []
