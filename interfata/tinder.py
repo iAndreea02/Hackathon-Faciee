@@ -19,7 +19,7 @@ try:
     from picam2 import Picamera2
     HAS_PICAMERA = True
 except ImportError:
-    print("Picamera2 nu este instalat. Se va folosi OpenCV (webcam).")
+    print("Picamera2 nu este instalat sau nu suntem pe Raspberry Pi. Se va folosi OpenCV (fallback).")
     HAS_PICAMERA = False
 
 # --- CULORI ---
@@ -148,6 +148,8 @@ class FaceProcessor:
                                           refine_landmarks=True, min_detection_confidence=0.5, min_tracking_confidence=0.5)
 
     def process(self, frame):
+        # MediaPipe așteaptă RGB. 
+        # Dacă Picamera2 dă BGR (configurat mai jos), convertim.
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         rgb.flags.writeable = False
         mesh_results = self.mesh.process(rgb)
@@ -180,15 +182,17 @@ class TinderPage(Screen):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.face_processor = FaceProcessor()
-        self.cap = None # Va fi Picamera2 sau cv2
-        self.picam2 = None # Instanta Picamera2
-        self.using_picamera = False
         
+        # Variabile cameră
+        self.picam2 = None
+        self.cap = None
+        self.using_picamera = False
         self._camera_event = None
+        
+        # Variabile logică
         self.index = 0
         self.selected_answers = []
         self.can_answer = True
-        
         self.hold_start_time = 0
         self.last_turn = "CENTER"
         self.required_hold_time = 2.0 
@@ -266,22 +270,25 @@ class TinderPage(Screen):
         self.bg_rect.size = self.size
 
     def on_enter(self):
-        # Initializare Camera (Picamera2 sau OpenCV fallback)
+        # 1. Încercăm să pornim PICAMERA2
         if HAS_PICAMERA:
             try:
                 self.picam2 = Picamera2()
+                # Configurare rezoluție și format (BGR888 pt compatibilitate OpenCV)
                 config = self.picam2.create_preview_configuration(main={"size": (640, 480), "format": "BGR888"})
                 self.picam2.configure(config)
                 self.picam2.start()
                 self.using_picamera = True
-                print("Picamera2 pornită cu succes.")
+                print("[INFO] Picamera2 pornită.")
             except Exception as e:
-                print(f"Eroare la pornirea Picamera2: {e}. Trecem pe OpenCV.")
+                print(f"[ERR] Picamera2 a eșuat ({e}). Trecem pe OpenCV.")
                 self.using_picamera = False
                 self.picam2 = None
-                self.cap = cv2.VideoCapture(0)
         else:
             self.using_picamera = False
+
+        # 2. Dacă Picamera2 nu merge/nu există, fallback la OpenCV
+        if not self.using_picamera:
             self.cap = cv2.VideoCapture(0)
 
         self.index = 0
@@ -290,15 +297,20 @@ class TinderPage(Screen):
         self.hold_start_time = 0
         self.last_turn = "CENTER"
         self.update_question_ui()
+        
+        # 30 FPS Update
         self._camera_event = Clock.schedule_interval(self.update, 1.0/30.0)
 
     def on_leave(self):
-        # Oprire Camera
+        # Oprire Picamera2
         if self.using_picamera and self.picam2:
             self.picam2.stop()
             self.picam2.close()
             self.picam2 = None
-        elif self.cap:
+            self.using_picamera = False
+        
+        # Oprire OpenCV
+        if self.cap:
             self.cap.release()
             self.cap = None
             
@@ -322,21 +334,23 @@ class TinderPage(Screen):
     def update(self, dt):
         if self.index >= len(questions): return
 
-        # Citire frame (Picamera sau OpenCV)
+        # --- CAPTURĂ FRAME ---
         frame = None
         if self.using_picamera and self.picam2:
-            # Picamera2 captureaza un array (BGR in mod implicit daca am configurat asa)
+            # Picamera2 returnează un numpy array
             try:
                 frame = self.picam2.capture_array()
-            except:
-                pass
+            except Exception as e:
+                print(f"Eroare captură Picamera2: {e}")
+                return
         elif self.cap:
             ret, frame = self.cap.read()
-            if not ret: frame = None
+            if not ret: return
 
         if frame is None: return
 
-        # Procesare Frame
+        # --- PROCESARE (La fel ca înainte) ---
+        # Flip orizontal pentru efect oglindă
         frame = cv2.flip(frame, 1)
         h, w, _ = frame.shape
         
@@ -358,7 +372,6 @@ class TinderPage(Screen):
             if current_turn == "LEFT":
                 self.card_left.update_border_color(COLOR_MAGENTA)
                 self.lbl_status.text = f"Mentine STANGA: {2.0 - elapsed_time:.1f}s"
-                
                 if elapsed_time >= self.required_hold_time:
                     self.card_left.update_border_color(COLOR_GREEN)
                     self.select_answer(questions[self.index]["options"][0])
@@ -367,7 +380,6 @@ class TinderPage(Screen):
             elif current_turn == "RIGHT":
                 self.card_right.update_border_color(COLOR_MAGENTA)
                 self.lbl_status.text = f"Mentine DREAPTA: {2.0 - elapsed_time:.1f}s"
-                
                 if elapsed_time >= self.required_hold_time:
                     self.card_right.update_border_color(COLOR_GREEN)
                     self.select_answer(questions[self.index]["options"][1])
@@ -380,7 +392,7 @@ class TinderPage(Screen):
             if current_turn == "CENTER":
                 self.can_answer = True
 
-        # Desenare Feedback
+        # --- DESENARE FEEDBACK ---
         if current_turn == "LEFT":
             cv2.line(frame, (0,0), (0,h), (255, 0, 255), 10)
         elif current_turn == "RIGHT":
@@ -388,7 +400,8 @@ class TinderPage(Screen):
         elif current_turn == "CENTER" and self.can_answer:
             cv2.circle(frame, (w//2, 30), 10, (0, 255, 0), -1)
 
-        # Conversie pentru Kivy Texture
+        # --- CONVERSIE KIVY ---
+        # Kivy vrea textura inversata pe Y, deci flip 0
         buf = cv2.flip(frame, 0).tobytes()
         texture = Texture.create(size=(w, h), colorfmt='bgr')
         texture.blit_buffer(buf, colorfmt='bgr', bufferfmt='ubyte')
