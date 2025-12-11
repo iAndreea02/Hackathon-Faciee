@@ -82,7 +82,7 @@ class RoundedCard(BoxLayout):
         if hasattr(self, 'border'):
             self.border.rounded_rectangle = (self.x, self.y, self.width, self.height, self.radius_val)
 
-# --- THREAD CAMERA (COLOR FIX APPLIED) ---
+# --- THREAD CAMERA (FIX CULOARE BGR->RGB) ---
 def camera_control_thread(detector_h, detector_f):
     global shared_frame, shared_gesture, stop_camera_thread
     
@@ -95,11 +95,12 @@ def camera_control_thread(detector_h, detector_f):
         try:
             print("[CAM] Inițializare Picamera2...")
             picam2 = Picamera2()
-            # Configurare BGR888 pentru consistență cu OpenCV
+            # CONFIGURAM BGR888 EXPLICIT pentru a fi compatibil cu logica OpenCV
             config = picam2.create_video_configuration(
                 main={"size": (640, 480), "format": "BGR888"} 
             )
             picam2.configure(config)
+            
             # Start simplu + controale Auto
             picam2.start(controls={"AwbMode": "auto", "AeExposureMode": "normal"})
             time.sleep(2) # Calibrare
@@ -120,7 +121,7 @@ def camera_control_thread(detector_h, detector_f):
     while not stop_camera_thread.is_set():
         frame_bgr = None
         
-        # A. Captură (BGR)
+        # A. Captură (Obținem BGR - standard OpenCV)
         try:
             if using_picamera:
                 frame_bgr = picam2.capture_array()
@@ -135,29 +136,32 @@ def camera_control_thread(detector_h, detector_f):
             time.sleep(0.01)
             continue
 
-        # B. Conversie BGR -> RGB (REPARĂ PROBLEMA CULORII ALBASTRE)
+        # B. CORECȚIE CULOARE: BGR -> RGB
+        # Kivy are nevoie de RGB. OpenCV ne dă BGR. Aici facem inversarea.
         try:
             frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
         except Exception:
             frame_rgb = frame_bgr
 
         # C. Procesare
-        frame_rgb = cv2.flip(frame_rgb, 1)
+        frame_rgb = cv2.flip(frame_rgb, 1) # Oglindire
         
         try:
+            # MediaPipe lucrează bine cu RGB
             results = detector_h.detect(frame_rgb)
             hand = detector_h.get_biggest_hand(results)
             gesture = detector_h.classify_gesture(hand)
         except:
             gesture = "NONE"
         
-        # D. Debug Vizual (Pe imaginea RGB)
+        # D. Debug Vizual
+        # Textul VERDE (0, 255, 0) va fi verde corect acum, pentru că suntem în RGB
         cv2.putText(frame_rgb, f"GEST: {gesture}", (10, 30),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
         
         # E. Trimite
         with frame_lock:
-            shared_frame = frame_rgb
+            shared_frame = frame_rgb # Trimitem cadrul RGB corect
             shared_gesture = gesture
         
         time.sleep(0.03)
@@ -203,17 +207,14 @@ class MapPage(Screen):
         else:
             self.robot_widget = Label(text="[R]", color=COLOR_CYAN)
 
-        # Coordonate LOGICE
         self.robot_pos_x = 1000 
         self.robot_pos_y = 1000
-        
-        # Vizual
         self.robot_widget.center_x = Window.width / 2
         self.robot_widget.center_y = Window.height / 2
         layout.add_widget(self.robot_widget)
 
         # 3. UI
-        # --- A. LEGENDA COMENZI (Stânga Sus) ---
+        # --- LEGENDA (Stânga Sus) ---
         legend_card = RoundedCard(bg_color=(0.02, 0.05, 0.14, 0.90), radius=15,
                                   has_border=True, border_color=COLOR_CYAN,
                                   size_hint=(None, None), size=(200, 170),
@@ -241,17 +242,17 @@ class MapPage(Screen):
         legend_card.add_widget(grid)
         layout.add_widget(legend_card)
 
-        # --- B. CARD GEST DETECTAT (Imediat sub legendă) ---
+        # --- GEST DETECTAT (Sub Legendă) ---
         info_card = RoundedCard(bg_color=COLOR_DARK_NAVY, radius=15,
                                 has_border=True, border_color=COLOR_MAGENTA,
                                 size_hint=(None, None), size=(200, 60),
-                                pos_hint={'x': 0.02, 'top': 0.76}) # Plasat sub legendă
+                                pos_hint={'x': 0.02, 'top': 0.76})
         self.gesture_label = Label(text="AȘTEPTARE...", font_size='14sp', 
                                    bold=True, color=COLOR_WHITE, halign='center', valign='middle')
         info_card.add_widget(self.gesture_label)
         layout.add_widget(info_card)
 
-        # --- C. CARD CAMERA (Dreapta Sus) ---
+        # --- CAMERA (Dreapta Sus) ---
         cam_card = RoundedCard(bg_color=(0,0,0,1), radius=15,
                                has_border=True, border_color=COLOR_CYAN,
                                size_hint=(0.35, 0.25), 
@@ -260,12 +261,12 @@ class MapPage(Screen):
         cam_card.add_widget(self.image_widget)
         layout.add_widget(cam_card)
 
-        # --- D. BACK BTN (Centrat Jos) ---
+        # --- BACK BTN (Centrat Jos) ---
         btn_back = Button(text="Înapoi", 
                           background_normal='', background_color=COLOR_MAGENTA,
                           color=COLOR_WHITE, bold=True, font_size='14sp',
                           size_hint=(None, None), size=(120, 45),
-                          pos_hint={'center_x': 0.5, 'y': 0.03}) # Centrat jos
+                          pos_hint={'center_x': 0.5, 'y': 0.03})
         btn_back.bind(on_release=lambda x: self.change_to_menu())
         layout.add_widget(btn_back)
 
@@ -326,8 +327,12 @@ class MapPage(Screen):
             if shared_frame is None: return
             frame = shared_frame.copy()
         
+        # Frame-ul vine RGB din thread (a fost convertit BGR->RGB acolo)
+        # Kivy vrea textură inversată pe Y
         frame_flipped = cv2.flip(frame, 0)
         buf = frame_flipped.tobytes()
+        
+        # Creăm textura cu formatul 'rgb'
         texture = Texture.create(size=(frame.shape[1], frame.shape[0]), colorfmt='rgb')
         texture.blit_buffer(buf, colorfmt='rgb', bufferfmt='ubyte')
         self.image_widget.texture = texture
