@@ -1,6 +1,6 @@
 import cv2
 import pygame
-from picamera2 import Picamera2
+import subprocess
 from hands.hand_detector import HandDetector
 from face.face_processor import FaceProcessor
 from game.game_engine import GameEngine
@@ -17,11 +17,15 @@ game = GameEngine("harta.png", "move.gif")
 
 # -------------------------------------------------------------
 # Camera – Raspberry Pi via GStreamer (libcamera)
-picam2 = Picamera2()
-config = picam2.create_video_configuration(main={"format": "RGB888","size": (640, 480)})
-picam2.configure(config)
-picam2.start()
-print("Camera open")
+cmd = [
+    "rpicam-vid",
+    "--codec", "mjpeg",
+    "-t", "0",
+    "-o", "-",
+]
+proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+buffer = b""
+
 # -------------------------------------------------------------
 
 # (opțional) dacă vrei totuși să reduci la 320x240 pentru viteză
