@@ -14,50 +14,34 @@ import os, sys, threading, time, cv2
 import numpy as np
 
 # =========================================================================
-# 1. SISTEM INTELIGENT DE DETECTARE A CĂILOR (FIX PENTRU RASPBERRY PI)
+# 1. REPARARE CĂI (PATH FIX)
 # =========================================================================
+# Locația acestui fișier: .../Hackathon-Faciee/interfata/pagini/harta.py
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
-PROJECT_ROOT = os.path.dirname(CURRENT_DIR) # Urcăm un nivel
 
-# Încercăm să găsim folderul HARTA (poate fi "HARTA", "harta" sau "Harta")
-# Căutăm atât în folderul părinte (structura corectă), cât și în folderul curent (fallback)
-harta_folder_name = None
-harta_root_path = None
+# Urcăm 2 niveluri pentru a ajunge la rădăcină (Hackathon-Faciee)
+# interfata/pagini -> interfata -> Hackathon-Faciee
+ROOT_DIR = os.path.dirname(os.path.dirname(CURRENT_DIR))
 
-possible_locations = [PROJECT_ROOT, CURRENT_DIR]
-possible_names = ["HARTA", "harta", "Harta"]
+# Calea către folderul HARTA (care este în rădăcină)
+HARTA_ROOT = os.path.join(ROOT_DIR, "HARTA")
+ASSETS_DIR = os.path.join(HARTA_ROOT, "assets")
 
-print("--- DIAGNOSTICARE CĂI ---")
-for loc in possible_locations:
-    for name in possible_names:
-        candidate = os.path.join(loc, name)
-        if os.path.exists(candidate) and os.path.isdir(candidate):
-            harta_root_path = candidate
-            print(f"[PATH] Găsit folder HARTA la: {harta_root_path}")
-            break
-    if harta_root_path: break
+# Adăugăm HARTA la sistem pentru a putea importa 'face' și 'hands'
+if HARTA_ROOT not in sys.path:
+    sys.path.append(HARTA_ROOT)
 
-if harta_root_path:
-    # 1. Adăugăm la System Path pentru ca importurile (face, hands) să meargă
-    if harta_root_path not in sys.path:
-        sys.path.append(harta_root_path)
-        print(f"[IMPORT] Adăugat la sys.path: {harta_root_path}")
+# Definim căile imaginilor
+HARTA_PATH = os.path.join(ASSETS_DIR, "harta_buna1.png")
+ROBOT_PATH = os.path.join(ASSETS_DIR, "robot_fata.png")
 
-    # 2. Configurare Căi Imagini
-    ASSETS_DIR = os.path.join(harta_root_path, "assets")
-    HARTA_PATH = os.path.join(ASSETS_DIR, "harta_buna1.png")
-    ROBOT_PATH = os.path.join(ASSETS_DIR, "robot_fata.png")
+print(f"--- DEBUG CĂI ---")
+print(f"Rădăcină proiect detectată: {ROOT_DIR}")
+print(f"Caut harta la: {HARTA_PATH}")
+if os.path.exists(HARTA_PATH):
+    print("✔ Harta EXISTĂ.")
 else:
-    print("[CRITICAL ERROR] Nu am găsit folderul HARTA/harta nicăieri!")
-    # Fallback paths (vor eșua probabil, dar definim variabilele)
-    HARTA_PATH = "harta_buna1.png"
-    ROBOT_PATH = "robot_fata.png"
-
-# Verificăm explicit imaginile
-if not os.path.exists(HARTA_PATH):
-    print(f"[IMG ERROR] Nu găsesc imaginea la: {HARTA_PATH}")
-    # Încercare disperată: poate e direct în assets cu litere mici?
-    HARTA_PATH = os.path.join(ASSETS_DIR, "harta_buna1.png".lower())
+    print("❌ Harta NU EXISTĂ. Verifică numele fișierului (mari/mici)!")
 
 # =========================================================================
 
@@ -119,7 +103,7 @@ class RoundedCard(BoxLayout):
         if hasattr(self, 'border'):
             self.border.rounded_rectangle = (self.x, self.y, self.width, self.height, self.radius_val)
 
-# --- THREAD CAMERA ---
+# --- THREAD CAMERA (FĂRĂ FILTRE) ---
 def camera_control_thread(detector_h, detector_f):
     global shared_frame, shared_gesture, stop_camera_thread
     
@@ -127,28 +111,23 @@ def camera_control_thread(detector_h, detector_f):
     cap = None
     using_picamera = False
 
-    # Parametri Corecție Culoare
-    CONTRAST = 1.2
-    BRIGHTNESS = 15
-
     # 1. Configurare Picamera2
     if HAS_PICAMERA:
         try:
             print("[CAM] Inițializare Picamera2...")
             picam2 = Picamera2()
+            # Folosim 640x480 RGB888. Picamera2 se ocupă singură de balans de alb și expunere.
             config = picam2.create_video_configuration(
                 main={"size": (640, 480), "format": "RGB888"}
             )
             picam2.configure(config)
             picam2.start()
             using_picamera = True
-            print("[CAM] Picamera2 pornită (RGB888).")
+            print("[CAM] Picamera2 pornită (Natural).")
         except Exception as e:
             print(f"[CAM ERROR] Picamera2 a eșuat: {e}. Trec pe OpenCV.")
             using_picamera = False
-            if picam2: 
-                try: picam2.stop()
-                except: pass
+            if picam2: picam2.stop()
 
     # 2. Fallback OpenCV
     if not using_picamera:
@@ -164,6 +143,7 @@ def camera_control_thread(detector_h, detector_f):
         # A. Captură
         try:
             if using_picamera:
+                # Picamera2 returnează imaginea "raw" procesată de ISP (culori naturale)
                 frame = picam2.capture_array()
             else:
                 ret, bgr_frame = cap.read()
@@ -178,14 +158,8 @@ def camera_control_thread(detector_h, detector_f):
             time.sleep(0.01)
             continue
 
-        # B. Corecție Culoare
-        try:
-            f_frame = frame.astype(np.float32)
-            adjusted = f_frame * CONTRAST + BRIGHTNESS
-            frame = np.clip(adjusted, 0, 255).astype(np.uint8)
-        except: pass
-
-        # C. Procesare
+        # B. Procesare (Doar Flip + Detectie)
+        # NU mai aplicăm corecții de culoare.
         frame = cv2.flip(frame, 1)
         
         try:
@@ -193,15 +167,18 @@ def camera_control_thread(detector_h, detector_f):
             hand = detector_h.get_biggest_hand(results)
             gesture = detector_h.classify_gesture(hand)
         except Exception as e:
-            # print(f"[DETECT ERROR] {e}") # Uncomment for deep debug
             gesture = "NONE"
+        
+        # C. Debug Vizual Minimal
+        cv2.putText(frame, f"GEST: {gesture}", (10, 30),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
         
         # D. Trimite spre GUI
         with frame_lock:
             shared_frame = frame
             shared_gesture = gesture
         
-        time.sleep(0.02)
+        time.sleep(0.02) # ~50 FPS
 
     # Cleanup
     if using_picamera and picam2:
@@ -365,7 +342,7 @@ class MapPage(Screen):
         
         self.gesture_label.text = f"GEST: [color={gest_color}]{display_gest}[/color]"
 
-        # 2. Update Imagine
+        # 2. Update Imagine Cameră
         with frame_lock:
             if shared_frame is None: return
             frame = shared_frame.copy()
