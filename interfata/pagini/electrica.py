@@ -81,7 +81,7 @@ class ElectricaPage(Screen):
 
         # 2. Logo Header
         logo_container = BoxLayout(size_hint_x=None, width=80, padding=[0, 0, 0, 10])
-        img_path = os.path.join("imagini", "electrica.png") 
+        img_path = os.path.join("imagini", "inginerie_electrica.png") 
         if os.path.exists(img_path):
             logo = Image(source=img_path, allow_stretch=True, keep_ratio=True)
             logo_container.add_widget(logo)
