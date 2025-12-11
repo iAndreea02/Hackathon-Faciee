@@ -12,7 +12,20 @@ from kivy.utils import get_color_from_hex
 import os
 
 # --- DIMENSIUNE ECRAN (Testare) ---
-Window.size = (480, 850)
+# Window.size = (480, 850)
+
+# --- CONFIGURARE CĂI (PATH FIX) ---
+# 1. Aflăm unde este acest fișier (cti.py -> în folderul 'pagini')
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# 2. Urcăm un nivel mai sus (în folderul 'interfata')
+INTERFATA_DIR = os.path.dirname(CURRENT_DIR)
+
+# 3. Construim calea către folderul 'imagini'
+IMAGINI_DIR = os.path.join(INTERFATA_DIR, "imagini")
+
+# --- DEBUG PATH ---
+# print(f"Caut imagini in: {IMAGINI_DIR}")
 
 # --- PALETA STRICTĂ ---
 COLOR_CYAN = get_color_from_hex("#00B5CC")      # Titluri, Hero, Contururi
@@ -72,7 +85,6 @@ class CtiPage(Screen):
         lbl_salut = Label(text="BUNĂ ZIUA,", font_size='14sp', color=COLOR_CYAN, halign='left', size_hint_y=None, height=20)
         lbl_salut.bind(size=lambda *x: lbl_salut.setter('text_size')(lbl_salut, (lbl_salut.width, None)))
         
-        # MODIFICARE: Titlu CTI
         lbl_nume = Label(text="Viitor Inginer CTI", font_size='26sp', bold=True, color=COLOR_WHITE, halign='left')
         lbl_nume.bind(size=lambda *x: lbl_nume.setter('text_size')(lbl_nume, (lbl_nume.width, None)))
         
@@ -80,14 +92,18 @@ class CtiPage(Screen):
         text_box.add_widget(lbl_nume)
         header.add_widget(text_box)
 
-        # 2. Logo Header
+        # 2. Logo Header (MODIFICAT)
         logo_container = BoxLayout(size_hint_x=None, width=80, padding=[0, 0, 0, 10])
-        # MODIFICARE: Cale imagine CTI (asigură-te că ai cti.png sau folosește fallback)
-        img_path = os.path.join("imagini", "cti.png") 
+        
+        # Cale imagine absolută
+        img_path = os.path.join(IMAGINI_DIR, "cti.png")
+        
         if os.path.exists(img_path):
             logo = Image(source=img_path, allow_stretch=True, keep_ratio=True)
             logo_container.add_widget(logo)
         else:
+            # Fallback
+            print(f"[EROARE] Nu gasesc imaginea la: {img_path}")
             logo_container.add_widget(Label(text="[CTI]", color=COLOR_CYAN, bold=True))
             
         header.add_widget(logo_container)
@@ -107,23 +123,20 @@ class CtiPage(Screen):
         
         info_card.add_widget(Label(text="SPECIALIZAREA TA", color=(1,1,1,0.7), font_size='12sp', bold=True, halign='left', size_hint_y=None, height=20))
         
-        # MODIFICARE: Titlu Diplomă CTI
         lbl_dip = Label(text="Inginer în Calculatoare și Tehnologia Informației", color=COLOR_WHITE, font_size='18sp', bold=True, halign='left', valign='top')
         lbl_dip.bind(size=lambda *x: lbl_dip.setter('text_size')(lbl_dip, (lbl_dip.width, None)))
         info_card.add_widget(lbl_dip)
         content.add_widget(info_card)
 
         # --- 2. HERO CARD (CYAN) ---
-        hero_card = RoundedCard(bg_color=COLOR_CYAN, size_hint_y=None, height=200) # Am mărit puțin height pentru text
+        hero_card = RoundedCard(bg_color=COLOR_CYAN, size_hint_y=None, height=200)
         hero_card.orientation = 'vertical'
         hero_card.spacing = 10
         
-        # MODIFICARE: Titlu Hero
         lbl_hero_t = Label(text="Transformă ideile digitale în realitate", font_size='22sp', bold=True, color=COLOR_WHITE, halign='left', size_hint_y=None, height=60)
         lbl_hero_t.bind(size=lambda *x: lbl_hero_t.setter('text_size')(lbl_hero_t, (lbl_hero_t.width, None)))
         hero_card.add_widget(lbl_hero_t)
         
-        # MODIFICARE: Descriere Hero
         hero_desc = "Vei învăța să creezi aplicații, să construiești site-uri și software pe care lumea îl folosește zilnic. De la jocuri și AI, la sisteme inteligente."
         lbl_hero_d = Label(text=hero_desc, font_size='15sp', color=COLOR_WHITE, halign='left', valign='top', line_height=1.4)
         lbl_hero_d.bind(width=lambda *x: lbl_hero_d.setter('text_size')(lbl_hero_d, (lbl_hero_d.width, None)))
@@ -154,11 +167,9 @@ class CtiPage(Screen):
             
             return card
 
-        # Stânga: MAGENTA - MODIFICARE Oportunități
         opts = ["Joburi IT bine plătite", "Internship-uri tech", "Proiecte & Hackathoane", "Carieră globală"]
         grid.add_widget(create_clean_card(COLOR_MAGENTA, "Oportunități", opts))
 
-        # Dreapta: PURPLE - MODIFICARE Ce vei studia
         learn = ["Dezvoltare Software", "Baze de date & Rețele", "Inteligență Artificială", "Cybersecurity & Cloud"]
         grid.add_widget(create_clean_card(COLOR_PURPLE, "Ce vei studia", learn))
         
@@ -175,10 +186,8 @@ class CtiPage(Screen):
         msg_card.orientation = 'vertical'
         msg_card.spacing = 5
         
-        # MODIFICARE Titlu Mesaj
         msg_card.add_widget(Label(text="DE CE SĂ ALEGI CTI?", color=COLOR_CYAN, bold=True, font_size='14sp', size_hint_y=None, height=25, halign='center'))
         
-        # MODIFICARE Corp Mesaj
         txt_final = "Vrei să creezi tehnologia viitorului? De la aplicații care ne ușurează viața la soluții digitale inovatoare? Computerele sunt inima digitalului, iar aici începi!"
         lbl_msg = Label(text=txt_final, font_size='14sp', color=COLOR_WHITE, halign='center', valign='middle', line_height=1.3)
         lbl_msg.bind(size=lambda *x: lbl_msg.setter('text_size')(lbl_msg, (lbl_msg.width, None)))
@@ -205,8 +214,6 @@ class CtiPage(Screen):
 class MyApp(App):
     def build(self):
         sm = ScreenManager()
-        sm.add_widget(CTIPage(name='cti'))
+        sm.add_widget(CtiPage(name='cti'))
         return sm
 
-if __name__ == '__main__':
-    MyApp().run()

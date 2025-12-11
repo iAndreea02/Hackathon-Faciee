@@ -12,7 +12,20 @@ from kivy.utils import get_color_from_hex
 import os
 
 # --- DIMENSIUNE ECRAN (Testare) ---
-Window.size = (480, 850)
+# Window.size = (480, 850)
+
+# --- CONFIGURARE CĂI (PATH FIX) ---
+# 1. Aflăm unde este acest fișier (electrica.py -> în folderul 'pagini')
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# 2. Urcăm un nivel mai sus (în folderul 'interfata')
+INTERFATA_DIR = os.path.dirname(CURRENT_DIR)
+
+# 3. Construim calea către folderul 'imagini'
+IMAGINI_DIR = os.path.join(INTERFATA_DIR, "imagini")
+
+# --- DEBUG PATH ---
+# print(f"Caut imagini in: {IMAGINI_DIR}")
 
 # --- PALETA STRICTĂ ---
 COLOR_CYAN = get_color_from_hex("#00B5CC")      # Titluri, Hero, Contururi
@@ -50,7 +63,7 @@ class RoundedCard(BoxLayout):
         if hasattr(self, 'border'):
             self.border.rounded_rectangle = (self.x, self.y, self.width, self.height, self.radius_val)
 
-class ElectricaPage(Screen):
+class InginerieElectricaPage(Screen):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
@@ -79,13 +92,18 @@ class ElectricaPage(Screen):
         text_box.add_widget(lbl_nume)
         header.add_widget(text_box)
 
-        # 2. Logo Header
+        # 2. Logo Header (MODIFICAT)
         logo_container = BoxLayout(size_hint_x=None, width=80, padding=[0, 0, 0, 10])
-        img_path = os.path.join("imagini", "inginerie_electrica.png") 
+        
+        # Cale imagine absolută
+        img_path = os.path.join(IMAGINI_DIR, "inginerie_electrica.png") 
+        
         if os.path.exists(img_path):
             logo = Image(source=img_path, allow_stretch=True, keep_ratio=True)
             logo_container.add_widget(logo)
         else:
+            # Fallback
+            print(f"[EROARE] Nu gasesc imaginea la: {img_path}")
             logo_container.add_widget(Label(text="[EL]", color=COLOR_CYAN, bold=True))
             
         header.add_widget(logo_container)
@@ -201,5 +219,3 @@ class MyApp(App):
         sm.add_widget(InginerieElectricaPage(name='electrica'))
         return sm
 
-if __name__ == '__main__':
-    MyApp().run()

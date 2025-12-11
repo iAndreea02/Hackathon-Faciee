@@ -12,7 +12,20 @@ from kivy.utils import get_color_from_hex
 import os
 
 # --- DIMENSIUNE ECRAN (Testare) ---
-Window.size = (480, 850)
+# Window.size = (480, 850)
+
+# --- CONFIGURARE CĂI (PATH FIX) ---
+# 1. Aflăm unde este acest fișier (ieti.py -> în folderul 'pagini')
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# 2. Urcăm un nivel mai sus (în folderul 'interfata')
+INTERFATA_DIR = os.path.dirname(CURRENT_DIR)
+
+# 3. Construim calea către folderul 'imagini'
+IMAGINI_DIR = os.path.join(INTERFATA_DIR, "imagini")
+
+# --- DEBUG PATH ---
+# print(f"Caut imagini in: {IMAGINI_DIR}")
 
 # --- PALETA STRICTĂ ---
 COLOR_CYAN = get_color_from_hex("#00B5CC")      # Titluri, Hero, Contururi
@@ -79,13 +92,18 @@ class IetiPage(Screen):
         text_box.add_widget(lbl_nume)
         header.add_widget(text_box)
 
-        # 2. Logo Header
+        # 2. Logo Header (MODIFICAT)
         logo_container = BoxLayout(size_hint_x=None, width=80, padding=[0, 0, 0, 10])
-        img_path = os.path.join("imagini", "ieti.png") 
+        
+        # Cale imagine absolută
+        img_path = os.path.join(IMAGINI_DIR, "ieti.png") 
+        
         if os.path.exists(img_path):
             logo = Image(source=img_path, allow_stretch=True, keep_ratio=True)
             logo_container.add_widget(logo)
         else:
+            # Fallback
+            print(f"[EROARE] Nu gasesc imaginea la: {img_path}")
             logo_container.add_widget(Label(text="[ETC]", color=COLOR_CYAN, bold=True))
             
         header.add_widget(logo_container)
@@ -198,6 +216,6 @@ class IetiPage(Screen):
 class MyApp(App):
     def build(self):
         sm = ScreenManager()
-        sm.add_widget(ElectronicaPage(name='etc'))
+        sm.add_widget(IetiPage(name='ieti')) # Am pastrat numele clasei IetiPage pt consistenta cu codul tau anterior
         return sm
 
