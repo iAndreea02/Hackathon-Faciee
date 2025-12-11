@@ -14,7 +14,7 @@ import os, sys, threading, time, cv2
 import numpy as np
 
 # =========================================================================
-# 1. PATH FIX (Căi fișiere)
+# 1. PATH FIX
 # =========================================================================
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 ROOT_DIR = os.path.dirname(os.path.dirname(CURRENT_DIR))
@@ -122,14 +122,15 @@ def camera_control_thread(detector_h, detector_f):
     # --- LOOP ---
     while not stop_camera_thread.is_set():
         frame_bgr = None
-        
-        # A. Captură (BGR)
+
+        # Capture
         try:
             if using_picamera:
                 frame_bgr = picam2.capture_array()
             else:
                 ret, img = cap.read()
-                if ret: frame_bgr = img
+                if ret:
+                    frame_bgr = img
         except:
             time.sleep(0.1)
             continue
@@ -138,31 +139,29 @@ def camera_control_thread(detector_h, detector_f):
             time.sleep(0.01)
             continue
 
-        # B. Conversie BGR -> RGB rapid și corect pentru Kivy
-        try:
-            frame_rgb = np.ascontiguousarray(frame_bgr[..., ::-1])
-        except Exception:
-            frame_rgb = np.ascontiguousarray(frame_bgr)
+        # BGR -> RGB corect
+        frame_rgb = np.ascontiguousarray(frame_bgr[..., ::-1])
 
-        # C. Procesare
+        # Flip orizontal (oglindă)
         frame_rgb = cv2.flip(frame_rgb, 1)
-        
+
+        # Procesare gesture
         try:
             results = detector_h.detect(frame_rgb)
             hand = detector_h.get_biggest_hand(results)
             gesture = detector_h.classify_gesture(hand)
         except:
             gesture = "NONE"
-        
-        # D. Debug Vizual
+
+        # Debug vizual
         cv2.putText(frame_rgb, f"GEST: {gesture}", (10, 30),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
-        
-        # E. Trimite
+
+        # Trimite către UI
         with frame_lock:
             shared_frame = frame_rgb
             shared_gesture = gesture
-        
+
         time.sleep(0.03)
 
     if using_picamera and picam2:
@@ -308,8 +307,7 @@ class MapPage(Screen):
         with frame_lock:
             if shared_frame is None: return
             frame = shared_frame.copy()
-        frame_flipped = cv2.flip(frame, 0)
-        frame_flipped = np.ascontiguousarray(frame_flipped)
+        frame_flipped = np.ascontiguousarray(cv2.flip(frame, 0))
         buf = frame_flipped.tobytes()
         texture = Texture.create(size=(frame_flipped.shape[1], frame_flipped.shape[0]), colorfmt='rgb')
         texture.blit_buffer(buf, colorfmt='rgb', bufferfmt='ubyte')
