@@ -1,4 +1,8 @@
 import pygame
+import os
+
+BASE = os.path.dirname(os.path.abspath(__file__))
+ASSETS = os.path.join(BASE, "..", "assets")
 
 class GameMap:
     def __init__(self):
@@ -9,18 +13,19 @@ class GameMap:
         # Font
         self.font = pygame.font.SysFont("Arial", 26, bold=True)
 
-        # Load logos (black background removed)
-        def load_icon(path):
-            img = pygame.image.load(path).convert_alpha()  # <- FIX
-            img.set_colorkey((0, 0, 0))
-            return img
+        def load_icon(filename):
+           full = os.path.join(ASSETS, filename)
+           img = pygame.image.load(full).convert_alpha()
+           img.set_colorkey((0, 0, 0))
+           return img
+
 
 
         self.logos = {
-            "Automatica": load_icon("assets/automatica1.png"),
-            "Calculatoare": load_icon("assets/calculatoare1.png"),
-            "Inginerie Electrică": load_icon("assets/inginerie electrica1.png"),
-            "Inginerie Electronică": load_icon("assets/electronica1.png")
+            "Automatica": load_icon("automatica1.png"),
+            "Calculatoare": load_icon("calculatoare1.png"),
+            "Inginerie Electrică": load_icon("inginerie electrica1.png"),
+            "Inginerie Electronică": load_icon("electronica1.png")
         }
 
         # resize smaller
