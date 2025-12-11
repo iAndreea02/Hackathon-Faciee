@@ -100,7 +100,7 @@ def camera_control_thread(detector_h, detector_f):
                 main={"size": (640, 480), "format": "BGR888"} 
             )
             picam2.configure(config)
-            # Start cu controale Auto pentru culori naturale
+            # Start simplu + controale Auto
             picam2.start(controls={"AwbMode": "auto", "AeExposureMode": "normal"})
             time.sleep(2) # Calibrare
             using_picamera = True
@@ -136,11 +136,9 @@ def camera_control_thread(detector_h, detector_f):
             continue
 
         # B. Conversie BGR -> RGB (REPARĂ PROBLEMA CULORII ALBASTRE)
-        # Indiferent dacă vine de la Picamera sau OpenCV, ne asigurăm că e RGB
         try:
             frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
         except Exception:
-            # Dacă conversia eșuează, folosim cadrul original
             frame_rgb = frame_bgr
 
         # C. Procesare
@@ -154,7 +152,6 @@ def camera_control_thread(detector_h, detector_f):
             gesture = "NONE"
         
         # D. Debug Vizual (Pe imaginea RGB)
-        # (0, 255, 0) este VERDE în RGB. Dacă ar fi BGR, ar fi verde tot, dar restul culorilor ar fi inversate.
         cv2.putText(frame_rgb, f"GEST: {gesture}", (10, 30),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
         
@@ -195,10 +192,7 @@ class MapPage(Screen):
         else:
             self.map_image = Label(text=f"HARTA NOT FOUND", color=COLOR_MAGENTA)
             
-        # Setăm o dimensiune fixă mare pentru harta de fundal, ca să putem face zoom/pan pe ea
-        # (size_hint=None este important pentru a o mișca liber)
-        self.map_image.size_hint = (None, None) 
-        self.map_image.size = (2000, 2000) # Harta e mare
+        self.map_image.size_hint = (2.0, 2.0) 
         self.map_image.allow_stretch = True
         self.map_image.keep_ratio = True
         layout.add_widget(self.map_image)
@@ -209,17 +203,17 @@ class MapPage(Screen):
         else:
             self.robot_widget = Label(text="[R]", color=COLOR_CYAN)
 
-        # Coordonate LOGICE ale robotului pe hartă
-        # Pornim din centru
+        # Coordonate LOGICE
         self.robot_pos_x = 1000 
         self.robot_pos_y = 1000
         
-        # Vizual, robotul stă mereu în mijlocul ecranului
+        # Vizual
         self.robot_widget.center_x = Window.width / 2
         self.robot_widget.center_y = Window.height / 2
         layout.add_widget(self.robot_widget)
 
         # 3. UI
+        # --- A. LEGENDA COMENZI (Stânga Sus) ---
         legend_card = RoundedCard(bg_color=(0.02, 0.05, 0.14, 0.90), radius=15,
                                   has_border=True, border_color=COLOR_CYAN,
                                   size_hint=(None, None), size=(200, 170),
@@ -227,7 +221,8 @@ class MapPage(Screen):
         legend_card.orientation = 'vertical'
         legend_card.padding = [15, 15, 15, 15]
         
-        legend_card.add_widget(Label(text="LISTA COMENZI", bold=True, font_size='12sp', color=COLOR_CYAN, size_hint_y=None, height=20, halign='left', text_size=(170, None)))
+        legend_card.add_widget(Label(text="LISTA COMENZI", bold=True, font_size='12sp', 
+                                     color=COLOR_CYAN, size_hint_y=None, height=20, halign='left', text_size=(170, None)))
         
         grid = GridLayout(cols=2, spacing=5, size_hint_y=1)
         def add_row(g, a):
@@ -246,7 +241,17 @@ class MapPage(Screen):
         legend_card.add_widget(grid)
         layout.add_widget(legend_card)
 
-        # CAM CARD
+        # --- B. CARD GEST DETECTAT (Imediat sub legendă) ---
+        info_card = RoundedCard(bg_color=COLOR_DARK_NAVY, radius=15,
+                                has_border=True, border_color=COLOR_MAGENTA,
+                                size_hint=(None, None), size=(200, 60),
+                                pos_hint={'x': 0.02, 'top': 0.76}) # Plasat sub legendă
+        self.gesture_label = Label(text="AȘTEPTARE...", font_size='14sp', 
+                                   bold=True, color=COLOR_WHITE, halign='center', valign='middle')
+        info_card.add_widget(self.gesture_label)
+        layout.add_widget(info_card)
+
+        # --- C. CARD CAMERA (Dreapta Sus) ---
         cam_card = RoundedCard(bg_color=(0,0,0,1), radius=15,
                                has_border=True, border_color=COLOR_CYAN,
                                size_hint=(0.35, 0.25), 
@@ -255,21 +260,12 @@ class MapPage(Screen):
         cam_card.add_widget(self.image_widget)
         layout.add_widget(cam_card)
 
-        # INFO
-        info_card = RoundedCard(bg_color=COLOR_DARK_NAVY, radius=20,
-                                has_border=True, border_color=COLOR_MAGENTA,
-                                size_hint=(0.6, 0.10),
-                                pos_hint={'center_x': 0.5, 'y': 0.02})
-        self.gesture_label = Label(text="AȘTEPTARE...", font_size='18sp', 
-                                   bold=True, color=COLOR_WHITE, halign='center', valign='middle')
-        info_card.add_widget(self.gesture_label)
-        layout.add_widget(info_card)
-
-        # BACK
-        btn_back = Button(text="Înapoi", background_normal='', background_color=COLOR_MAGENTA,
+        # --- D. BACK BTN (Centrat Jos) ---
+        btn_back = Button(text="Înapoi", 
+                          background_normal='', background_color=COLOR_MAGENTA,
                           color=COLOR_WHITE, bold=True, font_size='14sp',
-                          size_hint=(None, None), size=(100, 40),
-                          pos_hint={'x': 0.02, 'y': 0.02})
+                          size_hint=(None, None), size=(120, 45),
+                          pos_hint={'center_x': 0.5, 'y': 0.03}) # Centrat jos
         btn_back.bind(on_release=lambda x: self.change_to_menu())
         layout.add_widget(btn_back)
 
@@ -294,31 +290,23 @@ class MapPage(Screen):
         
         # 1. Update Gesturi
         gesture = shared_gesture
-        map_step = 300 * dt # Viteza de miscare
+        map_step = 300 * dt
 
         if gesture == "ROCK":       self.robot_pos_x -= map_step
         elif gesture == "PEACE":    self.robot_pos_x += map_step
         elif gesture == "LIKE":     self.robot_pos_y += map_step
         elif gesture == "BACK":     self.robot_pos_y -= map_step
 
-        # Limite Hartă (Bazat pe dimensiunea hărții setată la 2000x2000)
-        # Marginile de 100px ca să nu iasă robotul
         self.robot_pos_x = max(100, min(self.robot_pos_x, 1900)) 
         self.robot_pos_y = max(100, min(self.robot_pos_y, 1900))
 
-        # Calculăm poziția hărții astfel încât robotul să pară că stă pe loc și harta se mișcă sub el
-        # Centrul ecranului
         center_x = Window.width / 2
         center_y = Window.height / 2
         
-        # Poziția hărții = Centrul Ecranului - Poziția Robotului
         map_x = center_x - self.robot_pos_x
         map_y = center_y - self.robot_pos_y
         
-        # Aplicăm poziția
         self.map_image.pos = (map_x, map_y)
-
-        # Robotul rămâne fixat vizual în centrul ecranului
         self.robot_widget.center = (center_x, center_y)
 
         gest_color = "00B5CC"
@@ -338,11 +326,8 @@ class MapPage(Screen):
             if shared_frame is None: return
             frame = shared_frame.copy()
         
-        # Conversie pentru Kivy (RGB -> Texture)
         frame_flipped = cv2.flip(frame, 0)
         buf = frame_flipped.tobytes()
-        
-        # IMPORTANT: Folosim 'rgb' pentru a fi siguri de maparea corectă a culorilor în texture
         texture = Texture.create(size=(frame.shape[1], frame.shape[0]), colorfmt='rgb')
         texture.blit_buffer(buf, colorfmt='rgb', bufferfmt='ubyte')
         self.image_widget.texture = texture
