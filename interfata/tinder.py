@@ -199,7 +199,7 @@ class ResultBox(BoxLayout):
 # --------------------------------------------------------------------
 # CameraQuizApp
 # --------------------------------------------------------------------
-class CameraQuizApp(App):
+class TinderPage(App):
     def build(self):
         self.index = 0
         self.selected_answers = []
