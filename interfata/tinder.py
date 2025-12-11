@@ -18,6 +18,11 @@ from kivy.core.window import Window
 print("[DEBUG] Încerc importarea Picamera2...")
 try:
     from picamera2 import Picamera2
+    # Încercăm să importăm și controalele pentru a seta AWB/AE corect
+    try:
+        from picamera2 import methods
+    except:
+        methods = None
     HAS_PICAMERA = True
     print("[DEBUG] Picamera2 importat cu SUCCES!")
 except ImportError as e:
@@ -278,7 +283,7 @@ class TinderPage(Screen):
         self.card_right.update_border_color(COLOR_CYAN)
         self.update_question_ui()
 
-        # --- PORNIRE CAMERA (FIX) ---
+        # --- PORNIRE CAMERA (FIX ERROR 'int' vs 'str') ---
         if HAS_PICAMERA:
             try:
                 print("[DEBUG] Configurare Picamera2...")
@@ -290,15 +295,16 @@ class TinderPage(Screen):
                 )
                 self.picam2.configure(config)
                 
-                # 2. Pornire Simplă
+                # 2. Pornire (FĂRĂ CONTROALE AICI)
                 self.picam2.start()
                 
-                # 3. Setare Controale (AWB, AE) SEPARAT
-                # Acest lucru rezolvă eroarea 'unexpected keyword argument'
-                self.picam2.set_controls({
-                    "AwbMode": "auto",
-                    "AeExposureMode": "normal"
-                })
+                # 3. Setare Controale Safe (Opțional - comentat dacă crapă iar)
+                # Dacă set_controls dă eroare, o prindem și continuăm fără
+                try:
+                    self.picam2.options["AwbMode"] = 0 # Auto
+                    self.picam2.options["AeExposureMode"] = 0 # Normal
+                except:
+                    print("[WARN] Nu am putut seta AWB/AE. Folosesc default.")
                 
                 print("[DEBUG] Calibrare culori (2s)...")
                 time.sleep(2)
@@ -316,6 +322,7 @@ class TinderPage(Screen):
             print("[DEBUG] Pornire OpenCV...")
             self.cap = cv2.VideoCapture(0)
 
+        # Loop la 30 FPS
         self._camera_event = Clock.schedule_interval(self.update, 1.0/30.0)
 
     def on_leave(self):
@@ -357,7 +364,7 @@ class TinderPage(Screen):
         # 1. CAPTURĂ
         if self.using_picamera and self.picam2:
             try:
-                # Picamera2 returnează RGB888 (conform config)
+                # Picamera2 returnează RGB888
                 frame = self.picam2.capture_array()
             except: return
         elif self.cap:
@@ -436,6 +443,7 @@ class TinderPage(Screen):
         Clock.schedule_once(lambda dt: self.update_question_ui(), 0.5)
 
     def show_results(self):
+        # Oprire cameră
         self.on_leave()
         self.main_layout.clear_widgets()
         
