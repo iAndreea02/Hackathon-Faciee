@@ -93,7 +93,7 @@ def camera_control_thread(detector_h, detector_f):
     if HAS_PICAMERA:
         try:
             picam2 = Picamera2()
-            config = picam2.create_video_configuration(main={"size": (640, 480), "format": "RGB888"}, buffer_count=4)
+            config = picam2.create_video_configuration(main={"size": (640, 480), "format": "XRGB888"}, buffer_count=4)
             picam2.configure(config)
             picam2.start()
             time.sleep(1.5)
