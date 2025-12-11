@@ -136,7 +136,7 @@ class RoundedCard(BoxLayout):
         if hasattr(self, 'border_color_instruction'):
             self.border_color_instruction.rgba = color
 
-# --- FACE PROCESSOR (MODIFICAT PENTRU RGB) ---
+# --- FACE PROCESSOR ---
 class FaceProcessor:
     def __init__(self):
         self.mp_face = mp.solutions.face_detection
@@ -145,8 +145,6 @@ class FaceProcessor:
                                           refine_landmarks=True, min_detection_confidence=0.5, min_tracking_confidence=0.5)
 
     def process(self, frame):
-        # Dacă folosim Picamera2 cu RGB888, frame-ul e deja RGB.
-        # Nu mai facem cvtColor. Setam writeable=False pentru performanta MediaPipe.
         frame.flags.writeable = False
         mesh_results = self.mesh.process(frame)
         frame.flags.writeable = True
@@ -261,56 +259,66 @@ class TinderPage(Screen):
         self.bg_rect.size = self.size
 
     def on_enter(self):
-        print("[DEBUG] on_enter declanșat. Inițializez camera...")
+        print("[DEBUG] on_enter declanșat. Resetare totală chestionar...")
         
-        if HAS_PICAMERA:
-            try:
-                print("[DEBUG] Configurare Picamera2...")
-                self.picam2 = Picamera2()
-                
-                # Configurația din exemplul tău: create_video_configuration + RGB888
-                config = self.picam2.create_video_configuration(
-                    main={"size": (640, 480), "format": "RGB888"}
-                )
-                self.picam2.configure(config)
-                self.picam2.start()
-                
-                self.using_picamera = True
-                print("[DEBUG] Picamera2 pornită cu SUCCES (RGB888)!")
-            except Exception as e:
-                print(f"[ERROR] Picamera2 a eșuat: {e}. Încerc OpenCV.")
-                self.using_picamera = False
-                self.picam2 = None
-        else:
-            print("[DEBUG] Modulul Picamera2 lipsește.")
-            self.using_picamera = False
-
-        # Fallback OpenCV
-        if not self.using_picamera:
-            print("[DEBUG] Pornesc OpenCV...")
-            self.cap = cv2.VideoCapture(0)
-            if not self.cap.isOpened():
-                print("[ERROR] Nici OpenCV nu a putut deschide camera!")
-
+        # --- RESETARE UI ---
+        # Ștergem orice widget care ar fi putut rămâne (ex: rezultate)
+        self.main_layout.clear_widgets()
+        
+        # Re-adăugăm widget-urile originale de chestionar
+        self.main_layout.add_widget(self.question_card)
+        self.main_layout.add_widget(self.camera_container)
+        self.main_layout.add_widget(self.lbl_status)
+        # Butonul de back nu e în chestionar, doar la rezultate, dar putem să îl punem jos opțional dacă vrei
+        # Deocamdată îl lăsăm doar la rezultate, ca să nu aglomerăm
+        
+        # --- RESETARE LOGICĂ ---
         self.index = 0
         self.selected_answers = []
         self.can_answer = True
         self.hold_start_time = 0
         self.last_turn = "CENTER"
-        self.update_question_ui()
         
-        # Pornim loop-ul de update (30 FPS)
+        # Resetare vizuală chenare
+        self.card_left.update_border_color(COLOR_CYAN)
+        self.card_right.update_border_color(COLOR_CYAN)
+        
+        # Actualizare text prima întrebare
+        self.update_question_ui()
+
+        # --- PORNIRE CAMERA ---
+        if HAS_PICAMERA:
+            try:
+                print("[DEBUG] Configurare Picamera2...")
+                self.picam2 = Picamera2()
+                config = self.picam2.create_video_configuration(
+                    main={"size": (640, 480), "format": "RGB888"}
+                )
+                self.picam2.configure(config)
+                self.picam2.start()
+                self.using_picamera = True
+                print("[DEBUG] Picamera2 pornită!")
+            except Exception as e:
+                print(f"[ERROR] Picamera2: {e}. Fallback OpenCV.")
+                self.using_picamera = False
+                self.picam2 = None
+        else:
+            self.using_picamera = False
+
+        if not self.using_picamera:
+            print("[DEBUG] Pornesc OpenCV...")
+            self.cap = cv2.VideoCapture(0)
+
+        # Pornim loop
         self._camera_event = Clock.schedule_interval(self.update, 1.0/30.0)
 
     def on_leave(self):
-        print("[DEBUG] on_leave: Oprire camere...")
+        print("[DEBUG] on_leave: Oprire...")
         if self.using_picamera and self.picam2:
             try:
                 self.picam2.stop()
                 self.picam2.close()
-                print("[DEBUG] Picamera2 oprită.")
-            except Exception as e:
-                print(f"[ERROR] Eroare la oprirea Picamera2: {e}")
+            except: pass
             self.picam2 = None
             self.using_picamera = False
         
@@ -339,36 +347,27 @@ class TinderPage(Screen):
         if self.index >= len(questions): return
 
         frame = None
-        
-        # --- CAPTURĂ ---
         if self.using_picamera and self.picam2:
             try:
-                # capture_array returnează imaginea direct (RGB888 conform config)
                 frame = self.picam2.capture_array()
-            except Exception as e:
-                print(f"[ERROR] Captură Picamera2: {e}")
-                return
+            except: return
         elif self.cap:
             ret, cv_frame = self.cap.read()
             if ret:
-                # OpenCV dă BGR, trebuie convertit la RGB pentru MediaPipe/Kivy
                 frame = cv2.cvtColor(cv_frame, cv2.COLOR_BGR2RGB)
-            else:
-                return
+            else: return
 
         if frame is None: return
 
-        # --- PROCESARE (FĂRĂ CORECȚIE CULOARE) ---
-        
-        # Flip pentru efect oglindă
+        # Flip
         frame = cv2.flip(frame, 1)
         h, w, _ = frame.shape
         
-        # MediaPipe primește RGB
+        # Procesare
         mesh_results = self.face_processor.process(frame)
         current_turn = self.face_processor.get_head_turn(mesh_results, w)
 
-        # --- LOGICA TIMP ---
+        # Logică timp
         if current_turn != self.last_turn:
             self.hold_start_time = time.time()
             self.last_turn = current_turn
@@ -402,22 +401,18 @@ class TinderPage(Screen):
             if current_turn == "CENTER":
                 self.can_answer = True
 
-        # --- DESENARE FEEDBACK (Pe array-ul RGB) ---
-        # ATENȚIE: În RGB, (255, 0, 0) este ROSU, nu Albastru ca în BGR
-        # Cyan = (0, 255, 255), Magenta = (255, 0, 255)
-        
-        line_color = (255, 0, 255) # Magenta
+        # Desenare Feedback
+        line_color = (255, 0, 255)
         if current_turn == "LEFT":
             cv2.line(frame, (0,0), (0,h), line_color, 10)
         elif current_turn == "RIGHT":
             cv2.line(frame, (w,0), (w,h), line_color, 10)
         elif current_turn == "CENTER" and self.can_answer:
-            cv2.circle(frame, (w//2, 30), 10, (0, 255, 0), -1) # Verde
+            cv2.circle(frame, (w//2, 30), 10, (0, 255, 0), -1)
 
-        # --- AFIȘARE ÎN KIVY ---
-        # Kivy vrea textura inversată pe Y -> flip(0)
+        # Afișare
         buf = cv2.flip(frame, 0).tobytes()
-        texture = Texture.create(size=(w, h), colorfmt='rgb') # Specificăm 'rgb'
+        texture = Texture.create(size=(w, h), colorfmt='rgb')
         texture.blit_buffer(buf, colorfmt='rgb', bufferfmt='ubyte')
         self.camera_image.texture = texture
 
@@ -429,7 +424,9 @@ class TinderPage(Screen):
         Clock.schedule_once(lambda dt: self.update_question_ui(), 0.5)
 
     def show_results(self):
+        # Oprim camera când afișăm rezultatele
         self.on_leave()
+        
         self.main_layout.clear_widgets()
         
         match_counts = {spec: 0 for spec in specializari}
