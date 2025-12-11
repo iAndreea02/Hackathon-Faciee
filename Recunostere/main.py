@@ -12,7 +12,7 @@ hands = HandDetector()
 faces = FaceProcessor()
 
 # Game & Robot
-game = GameEngine("assets/harta.png", "assets/move.gif")
+game = GameEngine("harta.png", "move.gif")
 
 # -------------------------------------------------------------
 # Camera – Raspberry Pi via GStreamer (libcamera)

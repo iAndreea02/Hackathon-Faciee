@@ -1,11 +1,14 @@
 import pygame
 from PIL import Image
+import os
 
+Base_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+ASSETS_DIR = os.path.join(Base_DIR, "assets")
 class Robot:
     def __init__(self, gif_path, pos=(300, 300), scale=0.10):
         self.x, self.y = pos
         self.scale = scale
-        self.gif_path = gif_path
+        self.gif_path = os.path.join(ASSETS_DIR, gif_path)
 
         self.frames = []
         self.frame_index = 0
