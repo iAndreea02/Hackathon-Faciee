@@ -1,6 +1,7 @@
 import cv2
 import mediapipe as mp
-import time  # Import necesar pentru cronometrare
+import time
+import numpy as np
 from kivy.uix.screenmanager import Screen
 from kivy.uix.floatlayout import FloatLayout
 from kivy.uix.boxlayout import BoxLayout
@@ -13,6 +14,14 @@ from kivy.clock import Clock
 from kivy.utils import get_color_from_hex
 from kivy.core.window import Window
 
+# --- IMPORT PICAMERA2 (Raspberry Pi) ---
+try:
+    from picam2 import Picamera2
+    HAS_PICAMERA = True
+except ImportError:
+    print("Picamera2 nu este instalat. Se va folosi OpenCV (webcam).")
+    HAS_PICAMERA = False
+
 # --- CULORI ---
 COLOR_BG = get_color_from_hex("#050E23")
 COLOR_DARK_NAVY = get_color_from_hex("#050E23") 
@@ -20,7 +29,7 @@ COLOR_CYAN = get_color_from_hex("#00B5CC")
 COLOR_MAGENTA = get_color_from_hex("#E62B90")
 COLOR_WHITE = get_color_from_hex("#FFFFFF")
 COLOR_PURPLE = get_color_from_hex("#8E24AA")
-COLOR_GREEN = get_color_from_hex("#00FF00") # Culoare pentru confirmare
+COLOR_GREEN = get_color_from_hex("#00FF00")
 
 # --- DATE ---
 questions = [
@@ -113,7 +122,7 @@ class RoundedCard(BoxLayout):
             self.rect = RoundedRectangle(pos=self.pos, size=self.size, radius=[radius])
             if has_border:
                 self.border_color_instruction = Color(*self.border_color_rgba)
-                self.border = Line(rounded_rectangle=(self.x, self.y, self.width, self.height, radius), width=3) # Border mai gros
+                self.border = Line(rounded_rectangle=(self.x, self.y, self.width, self.height, radius), width=3) 
         
         self.bind(pos=self._update_rect, size=self._update_rect)
 
@@ -124,7 +133,6 @@ class RoundedCard(BoxLayout):
         if hasattr(self, 'border'):
             self.border.rounded_rectangle = (self.x, self.y, self.width, self.height, self.radius_val)
             
-    # Funcție pentru a schimba culoarea conturului dinamic
     def update_border_color(self, color):
         if hasattr(self, 'border_color_instruction'):
             self.border_color_instruction.rgba = color
@@ -172,16 +180,18 @@ class TinderPage(Screen):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.face_processor = FaceProcessor()
-        self.cap = None
+        self.cap = None # Va fi Picamera2 sau cv2
+        self.picam2 = None # Instanta Picamera2
+        self.using_picamera = False
+        
         self._camera_event = None
         self.index = 0
         self.selected_answers = []
         self.can_answer = True
         
-        # Variabile pentru logica de timp
         self.hold_start_time = 0
         self.last_turn = "CENTER"
-        self.required_hold_time = 2.0 # Secunde
+        self.required_hold_time = 2.0 
 
         # Fundal
         with self.canvas.before:
@@ -256,7 +266,24 @@ class TinderPage(Screen):
         self.bg_rect.size = self.size
 
     def on_enter(self):
-        self.cap = cv2.VideoCapture(0)
+        # Initializare Camera (Picamera2 sau OpenCV fallback)
+        if HAS_PICAMERA:
+            try:
+                self.picam2 = Picamera2()
+                config = self.picam2.create_preview_configuration(main={"size": (640, 480), "format": "BGR888"})
+                self.picam2.configure(config)
+                self.picam2.start()
+                self.using_picamera = True
+                print("Picamera2 pornită cu succes.")
+            except Exception as e:
+                print(f"Eroare la pornirea Picamera2: {e}. Trecem pe OpenCV.")
+                self.using_picamera = False
+                self.picam2 = None
+                self.cap = cv2.VideoCapture(0)
+        else:
+            self.using_picamera = False
+            self.cap = cv2.VideoCapture(0)
+
         self.index = 0
         self.selected_answers = []
         self.can_answer = True
@@ -266,18 +293,25 @@ class TinderPage(Screen):
         self._camera_event = Clock.schedule_interval(self.update, 1.0/30.0)
 
     def on_leave(self):
-        if self.cap: self.cap.release()
-        if self._camera_event: self._camera_event.cancel()
+        # Oprire Camera
+        if self.using_picamera and self.picam2:
+            self.picam2.stop()
+            self.picam2.close()
+            self.picam2 = None
+        elif self.cap:
+            self.cap.release()
+            self.cap = None
+            
+        if self._camera_event:
+            self._camera_event.cancel()
 
     def update_question_ui(self):
         if self.index < len(questions):
             q_data = questions[self.index]
             self.lbl_question.text = q_data["question"]
-            # FARA EMOJI
             self.lbl_left.text = q_data["options"][0]
             self.lbl_right.text = q_data["options"][1]
             
-            # Reset culori
             self.card_left.update_border_color(COLOR_CYAN)
             self.card_right.update_border_color(COLOR_CYAN)
             self.lbl_status.text = "Intoarce capul si MENTINE 2 secunde"
@@ -288,9 +322,21 @@ class TinderPage(Screen):
     def update(self, dt):
         if self.index >= len(questions): return
 
-        ret, frame = self.cap.read()
-        if not ret: return
+        # Citire frame (Picamera sau OpenCV)
+        frame = None
+        if self.using_picamera and self.picam2:
+            # Picamera2 captureaza un array (BGR in mod implicit daca am configurat asa)
+            try:
+                frame = self.picam2.capture_array()
+            except:
+                pass
+        elif self.cap:
+            ret, frame = self.cap.read()
+            if not ret: frame = None
 
+        if frame is None: return
+
+        # Procesare Frame
         frame = cv2.flip(frame, 1)
         h, w, _ = frame.shape
         
@@ -298,59 +344,51 @@ class TinderPage(Screen):
         current_turn = self.face_processor.get_head_turn(mesh_results, w)
 
         # --- LOGICA DE TIMP (HOLD) ---
-        
-        # Dacă direcția s-a schimbat, resetăm timpul
         if current_turn != self.last_turn:
             self.hold_start_time = time.time()
             self.last_turn = current_turn
-            # Reset vizual dacă nu e confirmat încă
             if self.can_answer:
                 self.card_left.update_border_color(COLOR_CYAN)
                 self.card_right.update_border_color(COLOR_CYAN)
                 self.lbl_status.text = "Mentine pozitia..."
 
-        # Calculăm cât timp a trecut
         elapsed_time = time.time() - self.hold_start_time
 
-        # Logică de selecție cu vizualizare
         if self.can_answer:
             if current_turn == "LEFT":
-                self.card_left.update_border_color(COLOR_MAGENTA) # Se pregatește
+                self.card_left.update_border_color(COLOR_MAGENTA)
                 self.lbl_status.text = f"Mentine STANGA: {2.0 - elapsed_time:.1f}s"
                 
                 if elapsed_time >= self.required_hold_time:
-                    self.card_left.update_border_color(COLOR_GREEN) # Succes
+                    self.card_left.update_border_color(COLOR_GREEN)
                     self.select_answer(questions[self.index]["options"][0])
-                    self.can_answer = False # Blochează răspunsuri multiple
+                    self.can_answer = False
 
             elif current_turn == "RIGHT":
-                self.card_right.update_border_color(COLOR_MAGENTA) # Se pregatește
+                self.card_right.update_border_color(COLOR_MAGENTA)
                 self.lbl_status.text = f"Mentine DREAPTA: {2.0 - elapsed_time:.1f}s"
                 
                 if elapsed_time >= self.required_hold_time:
-                    self.card_right.update_border_color(COLOR_GREEN) # Succes
+                    self.card_right.update_border_color(COLOR_GREEN)
                     self.select_answer(questions[self.index]["options"][1])
-                    self.can_answer = False # Blochează răspunsuri multiple
+                    self.can_answer = False
             
             elif current_turn == "CENTER":
                 self.lbl_status.text = "Intoarce capul spre optiune"
         
         else:
-            # Dacă am răspuns deja (can_answer = False), așteptăm revenirea la centru
             if current_turn == "CENTER":
                 self.can_answer = True
-                # Trecem vizual la următoarea întrebare doar când revine la centru
-                # sau putem trece imediat, dar logic e mai sigur așa
-                pass
 
-        # Desenare feedback pe frame
+        # Desenare Feedback
         if current_turn == "LEFT":
-            cv2.line(frame, (0,0), (0,h), (255, 0, 255), 10) # Magenta
+            cv2.line(frame, (0,0), (0,h), (255, 0, 255), 10)
         elif current_turn == "RIGHT":
-            cv2.line(frame, (w,0), (w,h), (255, 0, 255), 10) # Magenta
+            cv2.line(frame, (w,0), (w,h), (255, 0, 255), 10)
         elif current_turn == "CENTER" and self.can_answer:
             cv2.circle(frame, (w//2, 30), 10, (0, 255, 0), -1)
 
+        # Conversie pentru Kivy Texture
         buf = cv2.flip(frame, 0).tobytes()
         texture = Texture.create(size=(w, h), colorfmt='bgr')
         texture.blit_buffer(buf, colorfmt='bgr', bufferfmt='ubyte')
@@ -361,7 +399,6 @@ class TinderPage(Screen):
         self.index += 1
         self.lbl_status.text = "Raspuns inregistrat!"
         self.lbl_status.color = COLOR_GREEN
-        # Trecem la următoarea întrebare
         Clock.schedule_once(lambda dt: self.update_question_ui(), 0.5)
 
     def show_results(self):
@@ -390,7 +427,6 @@ class TinderPage(Screen):
         
         res_card.add_widget(Label(text=f"Potrivire: {percent}%", font_size='16sp', color=COLOR_MAGENTA))
 
-        # Buton Detalii
         target_screen_name = screen_map.get(best_spec)
         if target_screen_name:
             btn_details = Button(text="Vezi Detalii Specializare", 
