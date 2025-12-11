@@ -12,7 +12,20 @@ from kivy.utils import get_color_from_hex
 import os
 
 # --- DIMENSIUNE ECRAN (Testare) ---
-Window.size = (480, 850)
+# Window.size = (480, 850) # Poți decomenta pentru test pe PC
+
+# --- CONFIGURARE CĂI (PATH FIX) ---
+# 1. Aflăm unde este acest fișier (automatica.py -> în folderul 'pagini')
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# 2. Urcăm un nivel mai sus (în folderul 'interfata')
+INTERFATA_DIR = os.path.dirname(CURRENT_DIR)
+
+# 3. Construim calea către folderul 'imagini'
+IMAGINI_DIR = os.path.join(INTERFATA_DIR, "imagini")
+
+# --- DEBUG PATH ---
+# print(f"Caut imagini in: {IMAGINI_DIR}")
 
 # --- PALETA STRICTĂ ---
 COLOR_CYAN = get_color_from_hex("#00B5CC")      # Titluri, Hero, Contururi
@@ -36,7 +49,7 @@ class RoundedCard(BoxLayout):
             Color(*self.bg_color_rgba)
             self.rect = RoundedRectangle(pos=self.pos, size=self.size, radius=[radius])
             
-            # Desenare contur dacă este cerut (pentru cardul de jos)
+            # Desenare contur dacă este cerut
             if has_border and border_color:
                 Color(*border_color)
                 self.border = Line(rounded_rectangle=(self.x, self.y, self.width, self.height, radius), width=1.5)
@@ -67,7 +80,6 @@ class AutomaticaPage(Screen):
         self.add_widget(main_layout)
 
         # --- HEADER ---
-        # Folosim un GridLayout pentru a pune textul stânga și logo dreapta
         header = GridLayout(cols=2, size_hint_y=None, height=100, padding=[20, 20, 20, 0])
         
         # 1. Text Header
@@ -82,14 +94,18 @@ class AutomaticaPage(Screen):
         text_box.add_widget(lbl_nume)
         header.add_widget(text_box)
 
-        # 2. Logo Header
+        # 2. Logo Header (MODIFICAT)
         logo_container = BoxLayout(size_hint_x=None, width=80, padding=[0, 0, 0, 10])
-        img_path = os.path.join("imagini", "automatica.png")
+        
+        # Folosim calea absolută calculată sus
+        img_path = os.path.join(IMAGINI_DIR, "automatica.png")
+        
         if os.path.exists(img_path):
             logo = Image(source=img_path, allow_stretch=True, keep_ratio=True)
             logo_container.add_widget(logo)
         else:
-            # Fallback daca nu exista imaginea (un text sau placeholder)
+            # Fallback text
+            print(f"[EROARE] Nu gasesc imaginea la: {img_path}")
             logo_container.add_widget(Label(text="[AIA]", color=COLOR_CYAN, bold=True))
             
         header.add_widget(logo_container)
@@ -202,4 +218,3 @@ class AutomaticaPage(Screen):
         if self.manager:
             self.manager.transition.direction = 'right'
             self.manager.current = 'menu'
-
