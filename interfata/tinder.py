@@ -18,11 +18,6 @@ from kivy.core.window import Window
 print("[DEBUG] Încerc importarea Picamera2...")
 try:
     from picamera2 import Picamera2
-    # Încercăm să importăm și controalele pentru a seta AWB/AE corect
-    try:
-        from picamera2 import methods
-    except:
-        methods = None
     HAS_PICAMERA = True
     print("[DEBUG] Picamera2 importat cu SUCCES!")
 except ImportError as e:
@@ -150,7 +145,6 @@ class FaceProcessor:
                                           refine_landmarks=True, min_detection_confidence=0.5, min_tracking_confidence=0.5)
 
     def process(self, frame):
-        # Picamera2 livreaza RGB, MediaPipe vrea RGB. Nu facem conversie.
         frame.flags.writeable = False
         mesh_results = self.mesh.process(frame)
         frame.flags.writeable = True
@@ -265,15 +259,15 @@ class TinderPage(Screen):
         self.bg_rect.size = self.size
 
     def on_enter(self):
-        print("[DEBUG] on_enter: Resetare completa...")
+        print("[DEBUG] on_enter: Resetare UI completa...")
         
-        # RESET UI
+        # 1. Resetam UI-ul IMEDIAT (ștergem rezultatele)
         self.main_layout.clear_widgets()
         self.main_layout.add_widget(self.question_card)
         self.main_layout.add_widget(self.camera_container)
         self.main_layout.add_widget(self.lbl_status)
         
-        # RESET LOGIC
+        # 2. Resetam Logica
         self.index = 0
         self.selected_answers = []
         self.can_answer = True
@@ -281,38 +275,37 @@ class TinderPage(Screen):
         self.last_turn = "CENTER"
         self.card_left.update_border_color(COLOR_CYAN)
         self.card_right.update_border_color(COLOR_CYAN)
+        self.lbl_status.text = "Initializare camera..."
+        
         self.update_question_ui()
 
-        # --- PORNIRE CAMERA (FIX ERROR 'int' vs 'str') ---
+        # 3. Programam pornirea camerei cu o mică întârziere
+        # Acest lucru permite Kivy să deseneze interfața resetată ÎNAINTE ca `time.sleep` să blocheze totul.
+        Clock.schedule_once(self.start_camera_sequence, 0.1)
+
+    def start_camera_sequence(self, dt):
+        print("[DEBUG] Pornire secvență cameră...")
+        
         if HAS_PICAMERA:
             try:
                 print("[DEBUG] Configurare Picamera2...")
                 self.picam2 = Picamera2()
-                
-                # 1. Configurare Video (RGB888)
                 config = self.picam2.create_video_configuration(
                     main={"size": (640, 480), "format": "RGB888"}
                 )
                 self.picam2.configure(config)
                 
-                # 2. Pornire (FĂRĂ CONTROALE AICI)
+                # Pornim simplu, fără argumente care cauzează erori
                 self.picam2.start()
                 
-                # 3. Setare Controale Safe (Opțional - comentat dacă crapă iar)
-                # Dacă set_controls dă eroare, o prindem și continuăm fără
-                try:
-                    self.picam2.options["AwbMode"] = 0 # Auto
-                    self.picam2.options["AeExposureMode"] = 0 # Normal
-                except:
-                    print("[WARN] Nu am putut seta AWB/AE. Folosesc default.")
-                
-                print("[DEBUG] Calibrare culori (2s)...")
+                print("[DEBUG] Calibrare lumina (2s)...")
+                # Aici aplicația va "îngheța" 2 secunde, dar UI-ul va fi deja resetat
                 time.sleep(2)
                 
                 self.using_picamera = True
-                print("[DEBUG] Picamera2 pornită cu succes!")
+                print("[DEBUG] Picamera2 READY!")
             except Exception as e:
-                print(f"[ERROR] Picamera2 eșuat: {e}. Trec pe OpenCV.")
+                print(f"[ERROR] Picamera2 fail: {e}. Fallback OpenCV.")
                 self.using_picamera = False
                 self.picam2 = None
         else:
@@ -322,7 +315,7 @@ class TinderPage(Screen):
             print("[DEBUG] Pornire OpenCV...")
             self.cap = cv2.VideoCapture(0)
 
-        # Loop la 30 FPS
+        self.lbl_status.text = "Intoarce capul si MENTINE 2 secunde"
         self._camera_event = Clock.schedule_interval(self.update, 1.0/30.0)
 
     def on_leave(self):
@@ -364,7 +357,7 @@ class TinderPage(Screen):
         # 1. CAPTURĂ
         if self.using_picamera and self.picam2:
             try:
-                # Picamera2 returnează RGB888
+                # Picamera2 returnează RGB888 (conform config)
                 frame = self.picam2.capture_array()
             except: return
         elif self.cap:
