@@ -145,7 +145,7 @@ class FaceProcessor:
                                           refine_landmarks=True, min_detection_confidence=0.5, min_tracking_confidence=0.5)
 
     def process(self, frame):
-        # Pentru Picamera2 RGB888, nu mai facem conversie de culoare aici, doar dezactivăm scrierea
+        # Picamera2 livreaza RGB, MediaPipe vrea RGB. Nu facem conversie.
         frame.flags.writeable = False
         mesh_results = self.mesh.process(frame)
         frame.flags.writeable = True
@@ -260,15 +260,15 @@ class TinderPage(Screen):
         self.bg_rect.size = self.size
 
     def on_enter(self):
-        print("[DEBUG] on_enter: Resetare completă...")
+        print("[DEBUG] on_enter: Resetare completa...")
         
-        # RESETARE UI
+        # RESET UI
         self.main_layout.clear_widgets()
         self.main_layout.add_widget(self.question_card)
         self.main_layout.add_widget(self.camera_container)
         self.main_layout.add_widget(self.lbl_status)
         
-        # RESETARE LOGICĂ
+        # RESET LOGIC
         self.index = 0
         self.selected_answers = []
         self.can_answer = True
@@ -278,30 +278,33 @@ class TinderPage(Screen):
         self.card_right.update_border_color(COLOR_CYAN)
         self.update_question_ui()
 
-        # --- PORNIRE CAMERA CORECTĂ ---
+        # --- PORNIRE CAMERA (FIX) ---
         if HAS_PICAMERA:
             try:
-                print("[DEBUG] Configurare Picamera2 (Video Config)...")
+                print("[DEBUG] Configurare Picamera2...")
                 self.picam2 = Picamera2()
                 
-                # Configurare identică cu cea testată de tine
+                # 1. Configurare Video (RGB888)
                 config = self.picam2.create_video_configuration(
                     main={"size": (640, 480), "format": "RGB888"}
                 )
                 self.picam2.configure(config)
                 
-                # Start cu controale AUTOMATE pentru culori naturale
-                self.picam2.start(controls={
+                # 2. Pornire Simplă
+                self.picam2.start()
+                
+                # 3. Setare Controale (AWB, AE) SEPARAT
+                # Acest lucru rezolvă eroarea 'unexpected keyword argument'
+                self.picam2.set_controls({
                     "AwbMode": "auto",
                     "AeExposureMode": "normal"
                 })
                 
-                # PAUZĂ CRITICĂ pentru calibrare (2 secunde)
-                print("[DEBUG] Calibrare lumina (2s)...")
+                print("[DEBUG] Calibrare culori (2s)...")
                 time.sleep(2)
                 
                 self.using_picamera = True
-                print("[DEBUG] Picamera2 READY!")
+                print("[DEBUG] Picamera2 pornită cu succes!")
             except Exception as e:
                 print(f"[ERROR] Picamera2 eșuat: {e}. Trec pe OpenCV.")
                 self.using_picamera = False
@@ -313,11 +316,10 @@ class TinderPage(Screen):
             print("[DEBUG] Pornire OpenCV...")
             self.cap = cv2.VideoCapture(0)
 
-        # Loop la 30 FPS
         self._camera_event = Clock.schedule_interval(self.update, 1.0/30.0)
 
     def on_leave(self):
-        print("[DEBUG] on_leave: Curățare...")
+        print("[DEBUG] on_leave: Cleanup...")
         if self.using_picamera and self.picam2:
             try:
                 self.picam2.stop()
@@ -355,26 +357,28 @@ class TinderPage(Screen):
         # 1. CAPTURĂ
         if self.using_picamera and self.picam2:
             try:
-                # Array-ul este deja RGB888 și corect expus datorită config-ului
+                # Picamera2 returnează RGB888 (conform config)
                 frame = self.picam2.capture_array()
             except: return
         elif self.cap:
             ret, cv_frame = self.cap.read()
             if ret:
-                # OpenCV dă BGR, trebuie convertit la RGB
+                # OpenCV dă BGR -> convertim la RGB
                 frame = cv2.cvtColor(cv_frame, cv2.COLOR_BGR2RGB)
             else: return
 
         if frame is None: return
 
-        # 2. PROCESARE (Flip + Face Mesh)
-        frame = cv2.flip(frame, 1) # Oglindă
+        # 2. PROCESARE
+        # Flip pentru efect oglindă
+        frame = cv2.flip(frame, 1)
         h, w, _ = frame.shape
         
+        # MediaPipe primește RGB
         mesh_results = self.face_processor.process(frame)
         current_turn = self.face_processor.get_head_turn(mesh_results, w)
 
-        # 3. LOGICĂ DE TIMP (HOLD 2s)
+        # Logică timp
         if current_turn != self.last_turn:
             self.hold_start_time = time.time()
             self.last_turn = current_turn
@@ -408,19 +412,19 @@ class TinderPage(Screen):
             if current_turn == "CENTER":
                 self.can_answer = True
 
-        # 4. DESENARE FEEDBACK (Pe array-ul RGB)
-        line_color = (255, 0, 255) # Magenta (în RGB)
+        # 4. DESENARE FEEDBACK (RGB)
+        line_color = (255, 0, 255) # Magenta
         if current_turn == "LEFT":
             cv2.line(frame, (0,0), (0,h), line_color, 10)
         elif current_turn == "RIGHT":
             cv2.line(frame, (w,0), (w,h), line_color, 10)
         elif current_turn == "CENTER" and self.can_answer:
-            cv2.circle(frame, (w//2, 30), 10, (0, 255, 0), -1)
+            cv2.circle(frame, (w//2, 30), 10, (0, 255, 0), -1) # Verde
 
         # 5. AFIȘARE KIVY
-        # Kivy vrea textura inversată pe Y
+        # Kivy vrea textura inversată pe Y -> flip(0)
         buf = cv2.flip(frame, 0).tobytes()
-        texture = Texture.create(size=(w, h), colorfmt='rgb')
+        texture = Texture.create(size=(w, h), colorfmt='rgb') # Specificăm 'rgb'
         texture.blit_buffer(buf, colorfmt='rgb', bufferfmt='ubyte')
         self.camera_image.texture = texture
 
@@ -432,7 +436,6 @@ class TinderPage(Screen):
         Clock.schedule_once(lambda dt: self.update_question_ui(), 0.5)
 
     def show_results(self):
-        # Oprire cameră
         self.on_leave()
         self.main_layout.clear_widgets()
         

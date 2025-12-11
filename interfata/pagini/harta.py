@@ -13,46 +13,20 @@ from kivy.core.window import Window
 import os, sys, threading, time, cv2
 import numpy as np
 
-# =========================================================================
-# 1. REPARARE CĂI (PATH FIX)
-# =========================================================================
-# Locația acestui fișier: .../Hackathon-Faciee/interfata/pagini/harta.py
+# --- 1. CONFIGURARE CĂI (FIXED) ---
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.dirname(CURRENT_DIR) 
+ASSETS_DIR = os.path.join(PROJECT_ROOT, "HARTA", "assets")
+sys.path.append(os.path.join(PROJECT_ROOT, "HARTA"))
 
-# Urcăm 2 niveluri pentru a ajunge la rădăcină (Hackathon-Faciee)
-# interfata/pagini -> interfata -> Hackathon-Faciee
-ROOT_DIR = os.path.dirname(os.path.dirname(CURRENT_DIR))
-
-# Calea către folderul HARTA (care este în rădăcină)
-HARTA_ROOT = os.path.join(ROOT_DIR, "HARTA")
-ASSETS_DIR = os.path.join(HARTA_ROOT, "assets")
-
-# Adăugăm HARTA la sistem pentru a putea importa 'face' și 'hands'
-if HARTA_ROOT not in sys.path:
-    sys.path.append(HARTA_ROOT)
-
-# Definim căile imaginilor
 HARTA_PATH = os.path.join(ASSETS_DIR, "harta_buna1.png")
 ROBOT_PATH = os.path.join(ASSETS_DIR, "robot_fata.png")
-
-print(f"--- DEBUG CĂI ---")
-print(f"Rădăcină proiect detectată: {ROOT_DIR}")
-print(f"Caut harta la: {HARTA_PATH}")
-if os.path.exists(HARTA_PATH):
-    print("✔ Harta EXISTĂ.")
-else:
-    print("❌ Harta NU EXISTĂ. Verifică numele fișierului (mari/mici)!")
-
-# =========================================================================
 
 # --- IMPORT MODULE DETECȚIE ---
 try:
     from face.face_processor import FaceProcessor
     from hands.hand_detector import HandDetector
-    print("[IMPORT] Module detectie OK.")
-except ImportError as e:
-    print(f"[IMPORT ERROR] Nu pot importa hands/face: {e}")
-    # Dummy classes
+except ImportError:
     class HandDetector: 
         def detect(self, img): return None
         def get_biggest_hand(self, res): return None
@@ -63,9 +37,7 @@ except ImportError as e:
 try:
     from picamera2 import Picamera2
     HAS_PICAMERA = True
-    print("[IMPORT] Picamera2 detectat.")
 except ImportError:
-    print("[IMPORT WARN] Picamera2 lipseste. Se va folosi OpenCV.")
     HAS_PICAMERA = False
 
 # --- VARIABILE GLOBALE ---
@@ -103,7 +75,7 @@ class RoundedCard(BoxLayout):
         if hasattr(self, 'border'):
             self.border.rounded_rectangle = (self.x, self.y, self.width, self.height, self.radius_val)
 
-# --- THREAD CAMERA (FĂRĂ FILTRE) ---
+# --- THREAD CAMERA (COLOR FIX) ---
 def camera_control_thread(detector_h, detector_f):
     global shared_frame, shared_gesture, stop_camera_thread
     
@@ -116,14 +88,12 @@ def camera_control_thread(detector_h, detector_f):
         try:
             print("[CAM] Inițializare Picamera2...")
             picam2 = Picamera2()
-            # Folosim 640x480 RGB888. Picamera2 se ocupă singură de balans de alb și expunere.
-            config = picam2.create_video_configuration(
-                main={"size": (640, 480), "format": "RGB888"}
-            )
+            # Configurare standard 640x480
+            config = picam2.create_video_configuration(main={"size": (640, 480), "format": "RGB888"})
             picam2.configure(config)
             picam2.start()
             using_picamera = True
-            print("[CAM] Picamera2 pornită (Natural).")
+            print("[CAM] Picamera2 pornită.")
         except Exception as e:
             print(f"[CAM ERROR] Picamera2 a eșuat: {e}. Trec pe OpenCV.")
             using_picamera = False
@@ -143,14 +113,14 @@ def camera_control_thread(detector_h, detector_f):
         # A. Captură
         try:
             if using_picamera:
-                # Picamera2 returnează imaginea "raw" procesată de ISP (culori naturale)
+                # Picamera2 poate returna uneori BGR chiar daca cerem RGB, depinde de driver
+                # Luam frame-ul asa cum e
                 frame = picam2.capture_array()
             else:
                 ret, bgr_frame = cap.read()
                 if ret:
-                    frame = cv2.cvtColor(bgr_frame, cv2.COLOR_BGR2RGB)
+                    frame = bgr_frame # OpenCV este nativ BGR
         except Exception as e:
-            print(f"[CAM LOOP ERROR] {e}")
             time.sleep(0.1)
             continue
 
@@ -158,27 +128,50 @@ def camera_control_thread(detector_h, detector_f):
             time.sleep(0.01)
             continue
 
-        # B. Procesare (Doar Flip + Detectie)
-        # NU mai aplicăm corecții de culoare.
+        # B. CORECȚIE CULOARE (BGR -> RGB)
+        # Verificăm dacă imaginea pare BGR (albastră) și o convertim la RGB
+        # Soluția robustă: Convertim mereu BGR la RGB dacă folosim OpenCV.
+        # Pentru Picamera2, încercăm să detectăm sau forțăm conversia dacă e necesar.
+        
+        # EXPERIMENTAL: Dacă imaginea e albastră, înseamnă că e BGR.
+        # Aplicăm conversia BGR2RGB.
+        try:
+            # OpenCV (fallback) este mereu BGR -> Trebuie convertit
+            if not using_picamera:
+                frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            
+            # Picamera2: Dacă ai observat că e albastră, înseamnă că livrează BGR.
+            # Convertim și aici!
+            if using_picamera:
+                # Verificam daca formatul e cel asteptat, uneori vine direct RGB
+                # Dar daca zici ca e albastru, aplicam conversia inversa (BGR->RGB)
+                # Sau poate e RGB si noi credem ca e BGR?
+                # Daca e albastru, inseamna ca Rosu e interpretat ca Albastru.
+                # Facem swap intre canale.
+                frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+
+        except: pass
+
+        # C. Procesare
         frame = cv2.flip(frame, 1)
         
         try:
             results = detector_h.detect(frame)
             hand = detector_h.get_biggest_hand(results)
             gesture = detector_h.classify_gesture(hand)
-        except Exception as e:
+        except:
             gesture = "NONE"
         
-        # C. Debug Vizual Minimal
+        # D. Debug Vizual
         cv2.putText(frame, f"GEST: {gesture}", (10, 30),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
         
-        # D. Trimite spre GUI
+        # E. Trimite spre GUI
         with frame_lock:
             shared_frame = frame
             shared_gesture = gesture
         
-        time.sleep(0.02) # ~50 FPS
+        time.sleep(0.03)
 
     # Cleanup
     if using_picamera and picam2:
@@ -211,7 +204,7 @@ class MapPage(Screen):
         if os.path.exists(HARTA_PATH):
             self.map_image = KivyImage(source=HARTA_PATH, size_hint=(None, None), size=(1200, 1000), pos=(0,0))
         else:
-            self.map_image = Label(text=f"HARTA NOT FOUND\n{HARTA_PATH}", color=COLOR_MAGENTA, halign='center')
+            self.map_image = Label(text=f"HARTA NOT FOUND", color=COLOR_MAGENTA)
             
         self.map_image.size_hint = (2.0, 2.0) 
         self.map_image.allow_stretch = True
@@ -286,8 +279,8 @@ class MapPage(Screen):
         layout.add_widget(btn_back)
 
     def _update_bg(self, *args):
-        self.bg_rect.pos = self.pos
-        self.bg_rect.size = self.size
+        self.bg.pos = self.pos
+        self.bg.size = self.size
 
     def on_enter(self, *args):
         if not self.camera_is_running:
@@ -304,7 +297,7 @@ class MapPage(Screen):
     def update_kivy_ui(self, dt):
         global shared_frame, shared_gesture
         
-        # 1. Logică Joc
+        # 1. Update Gesturi
         gesture = shared_gesture
         map_step = 200 * dt
 
@@ -342,13 +335,16 @@ class MapPage(Screen):
         
         self.gesture_label.text = f"GEST: [color={gest_color}]{display_gest}[/color]"
 
-        # 2. Update Imagine Cameră
+        # 2. Update Imagine
         with frame_lock:
             if shared_frame is None: return
             frame = shared_frame.copy()
         
+        # Conversie pentru Kivy
         frame_flipped = cv2.flip(frame, 0)
         buf = frame_flipped.tobytes()
+        
+        # Important: Aici specificăm 'rgb' pentru că am făcut conversia în thread
         texture = Texture.create(size=(frame.shape[1], frame.shape[0]), colorfmt='rgb')
         texture.blit_buffer(buf, colorfmt='rgb', bufferfmt='ubyte')
         self.image_widget.texture = texture
